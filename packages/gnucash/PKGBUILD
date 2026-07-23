@@ -2,13 +2,13 @@ _realname=gnucash
 pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgbranch="#branch=${GNUCASH_BUILD}"
-pkgver=5.14+104_g8538dcf
-_release_ver=5.14
+pkgver=5.16+5_gd548b80 #Dummy placeholder replaced by pkgver() below.
+_release_ver=5.16
 _unstable_ver=4.904
 pkgrel=1
 pkgdesc="Basic Accounting Program"
 arch=('any')
-mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64')
+mingw_arch=('ucrt64' 'clang64' 'clangarm64')
 _git_url="https://github.com/gnucash/gnucash"
 _tar_url="https://downloads.sourceforge.net"
 license=('GPL-2.0-and-later')
@@ -60,6 +60,7 @@ case ${GNUCASH_BUILD} in
          ;;
      *)
          echo "Error! Invalid GnuCash Build ${GNUCASH_BUILD}"
+         exit -1
          ;;
 esac
 

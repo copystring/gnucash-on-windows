@@ -7,7 +7,7 @@ pkgsuffix="mingw2025"
 pkgrel=1
 pkgdesc="Guile Scheme Implementation"
 arch=('any')
-mingw_arch=('mingw64' 'ucrt64' 'clang64' 'clangarm64')
+mingw_arch=('ucrt64' 'clang64' 'clangarm64')
 #For now we use a heavily-patched branch from the 3.0.11 release, but
 #some of the patches are already merged upstream and upstream seems
 #receptive to the rest so we should be able to use 3.0.12 without
