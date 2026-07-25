@@ -1,0 +1,76 @@
+name: Build ucrt64 libdbi group
+
+# Builds libdbi and libdbi-drivers (in that dependency order) for ucrt64,
+# then merges them into the shared gnc-ucrt64-repo rolling release without
+# disturbing packages published by the other build-ucrt64-* workflows.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [packages]
+    paths:
+      - 'packages/libdbi/**'
+      - 'packages/libdbi-drivers/**'
+      - '.github/workflows/build-ucrt64-libdbi.yml'
+      - '.github/actions/publish-ucrt64-repo/**'
+
+env:
+  MINGW_ARCH: ucrt64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gnc-ucrt64-repo
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            git
+            pacman-contrib
+            autoconf
+            automake
+            libtool
+            mingw-w64-ucrt-x86_64-toolchain
+
+      - name: Configure git line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Build and install packages in dependency order
+        run: |
+          set -euo pipefail
+          mkdir -p repo-out
+          repo_out="$(pwd)/repo-out"
+          for pkg in libdbi libdbi-drivers; do
+            echo "::group::Building $pkg"
+            pushd "packages/$pkg"
+            makepkg-mingw -sCf --noconfirm --nocheck
+            for f in mingw-w64-ucrt-x86_64-*.pkg.tar.zst; do
+              pacman -U --noconfirm "$f"
+              cp "$f" "$repo_out/"
+            done
+            popd
+            echo "::endgroup::"
+          done
+
+      - name: Publish to rolling ucrt64 repo
+        uses: ./.github/actions/publish-ucrt64-repo
+        with:
+          package-dir: repo-out

@@ -1,0 +1,59 @@
+name: Publish to ucrt64 rolling repo
+description: >-
+  Merges newly built ucrt64 package(s) into the shared gnc-ucrt64-repo
+  rolling GitHub release without disturbing packages published by other
+  workflows. Must run after msys2/setup-msys2 in a job whose default shell
+  is `msys2 {0}`, and the caller's workflow must set a shared
+  `concurrency: group:` (the same one across all callers) so two publishes
+  never race on the same release.
+
+inputs:
+  package-dir:
+    description: Directory containing the newly built .pkg.tar.zst file(s)
+    required: true
+  release-tag:
+    description: Tag of the shared rolling release to update
+    required: false
+    default: gnc-ucrt64-repo
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch current repo database, if any
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # Fails harmlessly on the very first-ever publish, before the
+        # release or these particular files exist.
+        gh release download ${{ inputs.release-tag }} `
+          --pattern 'gnc-ucrt64.db.tar.zst' `
+          --pattern 'gnc-ucrt64.files.tar.zst' `
+          --dir '${{ inputs.package-dir }}' `
+          --clobber
+        exit 0
+
+    - name: Merge new package(s) into the repo database
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        cd "${{ inputs.package-dir }}"
+        repo-add gnc-ucrt64.db.tar.zst *.pkg.tar.zst
+        # repo-add normally symlinks the extensionless names to these; GitHub
+        # Release assets don't reliably preserve symlinks, and pacman fetches
+        # the repo by the extensionless name, so write real copies instead.
+        cp -L gnc-ucrt64.db.tar.zst gnc-ucrt64.db
+        cp -L gnc-ucrt64.files.tar.zst gnc-ucrt64.files
+
+    - name: Upload new/updated assets
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $assets = Get-ChildItem -Path '${{ inputs.package-dir }}' -File | ForEach-Object { $_.FullName }
+        gh release upload ${{ inputs.release-tag }} $assets --clobber *>$null
+        if ($LASTEXITCODE -ne 0) {
+          gh release create ${{ inputs.release-tag }} $assets `
+            --title "GnuCash ucrt64 dependency repo" `
+            --notes "Auto-generated rolling pacman repository for ucrt64. Do not edit manually; updated incrementally by workflows under .github/workflows/."
+        }

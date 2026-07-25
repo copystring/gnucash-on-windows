@@ -1,0 +1,71 @@
+name: Build ucrt64 swig
+
+# Builds swig for ucrt64 and merges it into the shared gnc-ucrt64-repo
+# rolling release without disturbing packages published by the other
+# build-ucrt64-* workflows.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [packages]
+    paths:
+      - 'packages/swig/**'
+      - '.github/workflows/build-ucrt64-swig.yml'
+      - '.github/actions/publish-ucrt64-repo/**'
+
+env:
+  MINGW_ARCH: ucrt64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gnc-ucrt64-repo
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            git
+            pacman-contrib
+            autoconf
+            automake
+            libtool
+            mingw-w64-ucrt-x86_64-toolchain
+
+      - name: Configure git line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Build and install swig
+        run: |
+          set -euo pipefail
+          mkdir -p repo-out
+          repo_out="$(pwd)/repo-out"
+          pushd packages/swig
+          makepkg-mingw -sCf --noconfirm --nocheck
+          for f in mingw-w64-ucrt-x86_64-*.pkg.tar.zst; do
+            pacman -U --noconfirm "$f"
+            cp "$f" "$repo_out/"
+          done
+          popd
+
+      - name: Publish to rolling ucrt64 repo
+        uses: ./.github/actions/publish-ucrt64-repo
+        with:
+          package-dir: repo-out
