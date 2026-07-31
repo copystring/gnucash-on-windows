@@ -15,16 +15,17 @@ AppPublisherURL=http://www.gnucash.org
 AppSupportURL=http://www.gnucash.org
 AppUpdatesURL=http://www.gnucash.org
 VersionInfoVersion=@PACKAGE_VERSION@
-DefaultDirName={pf}\@PACKAGE@
+DefaultDirName={autopf}\@PACKAGE@
 DefaultGroupName=GnuCash
 InfoBeforeFile=@INST_DIR@\share\doc\@PACKAGE@\LICENSE
 Compression=lzma
-MinVersion=5.0
+MinVersion=10.0
 PrivilegesRequired=poweruser
 OutputDir=.
 OutputBaseFilename=@PACKAGE@-@PACKAGE_VERSION@.setup
 UninstallFilesDir={app}\uninstall\@PACKAGE@
 InfoAfterFile=@GC_WIN_REPOS_DIR@\inno_setup\README.win32-bin.txt
+; SetupArchitecture=x64 ;; Inno-setup 7.0 and later. Github gets 6.7.
 SetupIconFile=@INST_DIR@\share\@PACKAGE@\pixmaps\gnucash-icon.ico
 WizardSmallImageFile=@INST_DIR@\share\@PACKAGE@\pixmaps\gnucash-icon-48x48.bmp
 
@@ -46,7 +47,7 @@ Name: "{group}\GnuCash"; Filename: "{app}\bin\@PACKAGE@.exe"; WorkingDir: "{code
 Name: "{group}\{cm:IconName_README}"; Filename: "{app}\doc\@PACKAGE@\{cm:IconFilename_README}"; Comment: "{cm:IconComment_README}"; Tasks: menuicon
 Name: "{group}\{cm:IconName_FAQ}"; Filename: "http://wiki.gnucash.org/wiki/FAQ"; Tasks: menuicon
 Name: "{group}\{cm:IconName_Bugzilla}"; Filename: "https://bugs.gnucash.org/enter_bug.cgi?product=GnuCash"; Tasks: menuicon
-Name: "{group}\{cm:IconName_InstallFQ}"; Filename: "{syswow64}/WindowsPowershell/v1.0/powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\bin\install-fq-mods.ps1"""; WorkingDir: "{app}\bin"; Comment: "{cm:IconComment_InstallFQ}"; Tasks: menuicon
+Name: "{group}\{cm:IconName_InstallFQ}"; Filename: "{sys}/WindowsPowershell/v1.0/powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\bin\install-fq-mods.ps1"""; WorkingDir: "{app}\bin"; Comment: "{cm:IconComment_InstallFQ}"; Tasks: menuicon
 Name: "{group}\{cm:IconName_Uninstall}"; Filename: "{uninstallexe}"; Comment: "{cm:IconComment_Uninstall}"; Tasks: menuicon
 
 Name: "{commondesktop}\GnuCash"; Filename: "{app}\bin\@PACKAGE@.exe"; WorkingDir: "{code:GetDocPath}"; Comment: "{cm:IconComment_GnuCash}"; IconFilename: "{app}\share\@PACKAGE@\pixmaps\gnucash-icon.ico"; Tasks: desktopicon
@@ -67,27 +68,16 @@ Source: "@INST_DIR@\etc\@PACKAGE@\environment"; DestDir: "{app}\etc\@PACKAGE@"; 
 ; Note: The above AfterInstall function will adapt the
 ; environment config file on-the-fly by the Pascal script below.
 Source: "@INST_DIR@\lib\*"; DestDir: "{app}\lib"; Flags: recursesubdirs; Components: main
-; Deprecated installation location for gnucash guile scripts. Can be removed after we're done with gnucash 3.x
-Source: "@INST_DIR@\lib\gnucash\scm\ccache\2.2\*"; DestDir: "{app}\lib\gnucash\scm\ccache\2.2"; Flags: recursesubdirs skipifsourcedoesntexist; Components: main
-Source: "@INST_DIR@\lib\guile\2.2\*"; DestDir: "{app}\lib\guile\2.2"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\lib\dbd\*.dll"; DestDir: "{app}\lib"; Components: main
-Source: "@INST_DIR@\lib\aqbanking\*"; DestDir: "{app}\lib\aqbanking"; Excludes: "*.dll.a"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\lib\gwenhywfar\*"; DestDir: "{app}\lib\gwenhywfar"; Excludes: "*.dll.a"; Flags: recursesubdirs; Components: main
+Source: "@INST_DIR@\lib\guile\3.0\*"; DestDir: "{app}\lib\guile\3.0"; Flags: recursesubdirs; Components: main
 ;; We don't have anything in libexec anymore at the moment
 ;Source: "@INST_DIR@\libexec\*"; DestDir: "{app}\libexec"; Flags: recursesubdirs; Components: main
-;; Retrieve all of the share directories for the package and its dependencies
+;; Copy over the share directories populated by the package:
 Source: "@INST_DIR@\share\@PACKAGE@\*"; DestDir: "{app}\share\@PACKAGE@"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\aqbanking\*"; DestDir: "{app}\share\aqbanking"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\gwenhywfar\*"; DestDir: "{app}\share\gwenhywfar"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\chipcard\*"; DestDir: "{app}\share\chipcard"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\guile\*"; DestDir: "{app}\share\guile"; Flags: recursesubdirs; Components: main
 Source: "@INST_DIR@\share\glib-2.0\*"; DestDir: "{app}\share\glib-2.0"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\libofx\*"; DestDir: "{app}\share\libofx"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\OpenSP\*"; DestDir: "{app}\share\OpenSP"; Flags: recursesubdirs; Components: main
+Source: "@INST_DIR@\share\guile\*"; DestDir: "{app}\share\guile"; Flags: recursesubdirs; Components: main
 Source: "@INST_DIR@\share\icons\hicolor\*"; DestDir: "{app}\share\icons\hicolor"; Flags: recursesubdirs; Components: main
-Source: "@INST_DIR@\share\glib-2.0\schemas\*"; DestDir: "{app}\share\glib-2.0\schemas"; Flags: recursesubdirs; Components: main
 
-;; The translations
+;; The translations--this contains copies of the .mo files we need from MINGW_DIR
 Source: "@INST_DIR@\share\locale\*"; DestDir: "{app}\share\locale"; Flags: recursesubdirs; Components: translations
 ;
 ;; The account templates
@@ -110,13 +100,16 @@ Source: "@INST_DIR@\share\doc\@PACKAGE@-docs\*.hhmap"; DestDir: "{app}\share\@PA
 
 ;;;; The second section retrieves the dependencies that we need from MinGW.
 ;; Required DLLs
-;; gnucash.exe: libglib-2.0-0.dll, libgtk-3-0.dll, ligdk-3-0.dll, libatk-1.0-dll, libgobject-2.0-0.dll, libintl-8.dll, libcairo-gobject-2.dll, libcairo-2.dll, libfontconfig-1.0.dll, libcrypto-3.dll, libfreetype-6.dll, libpixman-1-0.dll, libpng16-16.dll, zlib1.dll, libgdk-pixbuf-2.0-0.dll, libgio-2.0-0.dll, libgmodule-2.0-0.dll, libpango-1.0-0.dll, libpangocairo-1.0-0.dll, libpangowin32-1.0-0.dll, libpangoft2-1.0-0.dll, libpcre2-8-0.dll, libharfbuzz-0.dll, libharpyuv-0.dll, libfribidi-0.dll, libiconv-2.dll, libwinpthread-1.dll, libsecret-1-0.dll, libsystre-0.dll, libxml2-2.dll, libxml2-16.dll, libxslt-1.dll, libicuuc57.dll, libicudt57.dll, libtre-5.dll, libffi-8.dll, libgmp-10.dll, libltdl-7.dll
+;; gnucash.exe: libglib-2.0-0.dll, libgtk-3-0.dll, ligdk-3-0.dll, libatk-1.0-dll, libgobject-2.0-0.dll, libintl-8.dll, libcairo-gobject-2.dll, libcairo-2.dll, libfontconfig-1.0.dll, libcrypto-3-x64.dll, libfreetype-6.dll, libpixman-1-0.dll, libpng16-16.dll, zlib1.dll, libgdk-pixbuf-2.0-0.dll, libgio-2.0-0.dll, libgmodule-2.0-0.dll, libpango-1.0-0.dll, libpangocairo-1.0-0.dll, libpangowin32-1.0-0.dll, libpangoft2-1.0-0.dll, libpcre2-8-0.dll, libharfbuzz-0.dll, libharpyuv-0.dll, libfribidi-0.dll, libiconv-2.dll, libwinpthread-1.dll, libsecret-1-0.dll, libsystre-0.dll, libxml2-2.dll, libxml2-16.dll, libxslt-1.dll, libicuuc57.dll, libicudt57.dll, libtre-5.dll, libffi-8.dll, libgmp-10.dll, libltdl-7.dll
 ;; AQBanking: libgcrypt-20.dll, libgnutls-30.dll, libwinpthread-1.0.dll, libgmp-10.dll, libhogweed-6.dll, libidn-11.dll, libintl-8.dll, libnettle-8.dll, libp11-kit-0.dll, libtasn1-6.dll, zlib1.dll, libgpg-error-0.dll, libiconv-2.dll, libintl-8.dll, libgtk-win32-2.0-0.dll
 ;; libwebkit: libbrotlicommon.dll, libbrotlidec.dll libharfbuzz-icu-0.dll, liborc-0.4-0.dll, libgsttag-1.0-0.dll, libgraphite2.dll, libicudt65.dll, libicuin65.dll, liicuuc65.dll, libicudt.dll, libsoup-2.4-1.dll, libsqlite3-0.dll, libssl-3.dll, libstdc__-6.dll, libunistring-5.dll, libwebp-7.dll
 ;;lib/dbd/libdbdmysql.dll: libmariadb.dll, libeay32.dll, ssleay32.dll
 ;;lib/dbd/libdbdpgsql.dll: ssleay32.dll, libeay32.dll
 
 Source: "@MINGW_DIR@\bin\libatk-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libaqbanking-44.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libatomic_ops-1.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libatomic_ops_gpl-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libboost_date_time-mt.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libboost_locale-mt.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libboost_filesystem-mt.dll"; DestDir: "{app}\bin"; Components: main
@@ -128,9 +121,11 @@ Source: "@MINGW_DIR@\bin\libbrotlicommon.dll"; DestDir: "{app}\bin"; Components:
 Source: "@MINGW_DIR@\bin\libbrotlienc.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcairo-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcairo-gobject-2.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libchipcard-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcurl-4.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libcrypto-3.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libcrypto-3-x64.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libdatrie-1.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libdbi-3.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libdeflate.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libepoxy-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libexpat-1.dll"; DestDir: "{app}\bin"; Components: main
@@ -138,6 +133,7 @@ Source: "@MINGW_DIR@\bin\libffi-8.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libfontconfig-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libfreetype-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libfribidi-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgc-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgcrypt-20.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgdk-3-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgdk_pixbuf-2.0-0.dll"; DestDir: "{app}\bin"; Components: main
@@ -150,41 +146,43 @@ Source: "@MINGW_DIR@\bin\libgobject-2.0-0.dll"; DestDir: "{app}\bin"; Components
 Source: "@MINGW_DIR@\bin\libgpg-error-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgraphite2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgtk-3-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libguile-3.0-1.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgwengui-cpp-79.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgwengui-gtk3-79.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgwenhywfar-79.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libharfbuzz-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libharfbuzz-icu-0.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libhogweed-6.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libhogweed-7.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libiconv-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libicudt*.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libicuin*.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libicuuc*.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libidn2-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libintl-8.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libjavascriptcoregtk-3.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libjbig-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libjpeg-8.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libLerc.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libltdl-7.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\liblzma-5.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libnettle-8.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libnghttp2-14.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libnghttp3-9.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libngtcp2-16.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libngtcp2_crypto_ossl-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libnettle-9.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libofx-7.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libosp-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libp11-kit-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpango-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpangocairo-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpangoft2-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpangowin32-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpcre2-8-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libpgtypes.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libpq.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpixman-1-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpng16-16.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpsl-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\librsvg-2-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsharpyuv-0.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libsoup-2.4-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsqlite3-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libssh2-1.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libssl-3.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libssl-3-x64.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libstdc++-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsecret-1-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsystre-0.dll"; DestDir: "{app}\bin"; Components: main
@@ -193,21 +191,37 @@ Source: "@MINGW_DIR@\bin\libthai-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libtiff-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libtre-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libunistring-5.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\WebView2Loader.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libwebp-7.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libwebkitgtk-3.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libwinpthread-1.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libxmlsec1-gcrypt.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libxmlsec1-gnutls.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libxmlsec1-mscng.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libxmlsec1-openssl.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libxmlsec1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libxml2-16.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libxslt-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libzstd.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libmariadb.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\zlib1.dll"; DestDir: "{app}\bin"; Components: main
 
-Source: "@MINGW_DIR@\bin\gspawn-win32-helper.exe"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\gspawn-win32-helper-console.exe"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\gspawn-win64-helper.exe"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\gspawn-win64-helper-console.exe"; DestDir: "{app}\bin"; Components: main
 
+Source: "@MINGW_DIR@\lib\dbd\*.dll"; DestDir: "{app}\lib"; Components: main
+Source: "@MINGW_DIR@\lib\aqbanking\*"; DestDir: "{app}\lib\aqbanking"; Excludes: "*.dll.a"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\lib\gwenhywfar\*"; DestDir: "{app}\lib\gwenhywfar"; Excludes: "*.dll.a"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\lib\gdk-pixbuf-2.0\2.10.0\loaders\*.dll"; DestDir: "{app}\lib\gdk-pixbuf-2.0\2.10.0\loaders"; Components: main
-Source: "@MINGW_DIR@\lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"; DestDir: "{app}\lib\gdk-pixbuf-2.0\2.10.0\"; Components: main
+Source: "@MINGW_DIR@\lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"; DestDir: "{app}\lib\gdk-pixbuf-2.0\2.10.0"; Components: main
+Source: "@MINGW_DIR@\lib\guile\3.0\*"; DestDir: "{app}\lib\guile\3.0"; Flags: recursesubdirs; Components: main
 
+Source: "@MINGW_DIR@\share\aqbanking\*"; DestDir: "{app}\share\aqbanking"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\gwenhywfar\*"; DestDir: "{app}\share\gwenhywfar"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\chipcard\*"; DestDir: "{app}\share\chipcard"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\guile\*"; DestDir: "{app}\share\guile"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\libofx\*"; DestDir: "{app}\share\libofx"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\OpenSP\*"; DestDir: "{app}\share\OpenSP"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\glib-2.0\schemas\*.gschema.xml"; DestDir: "{app}\share\glib-2.0\schemas"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\icons\*"; DestDir: "{app}\share\icons"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\iso-codes\*"; DestDir: "{app}\share\xml\iso-codes"; Flags: recursesubdirs; Components: main
@@ -216,8 +230,8 @@ Source: "@MINGW_DIR@\share\xml\fontconfig\*"; DestDir: "{app}\share\xml\fontconf
 Source: "@MINGW_DIR@\etc\gtk-3.0\*"; Destdir: "{app}\etc\gtk-3.0"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\etc\fonts\*"; DestDir: "{app}\etc\fonts"; Flags: recursesubdirs; Components: main
 
-;;; Finally we have three files in the extra_dist directory to put in bin:
-Source: "@GC_WIN_REPOS_DIR@\extra_dist\*"; DestDir: "{app}\bin"; Flags: recursesubdirs; Components: main
+;; The powershell script to install Finance::Quote:
+Source: "@GC_WIN_REPOS_DIR@\extra_dist\install-fq-mods.ps1"; DestDir: "{app}\bin"; Components: main
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define the registry keys Setup should create (HKLM = HKEY_LOCAL_MACHINE)
@@ -241,8 +255,8 @@ Root: HKLM; Subkey: "Software\GnuCash\Paths"; ValueType: string; ValueName: "loc
 ; Store the version information
 Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: none; Flags: uninsdeletekeyifempty
 Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: string; ValueName: "Version"; ValueData: "@PACKAGE_VERSION@"; Flags: uninsdeletevalue
-Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: dword; ValueName: "VersionMajor"; ValueData: "@GNUCASH_MAJOR_VERSION@"; Flags: uninsdeletevalue
-Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: dword; ValueName: "VersionMinor"; ValueData: "@GNUCASH_MINOR_VERSION@"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: dword; ValueName: "VersionMajor"; ValueData: @GNUCASH_MAJOR_VERSION@; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\GnuCash\Version"; ValueType: dword; ValueName: "VersionMinor"; ValueData: @GNUCASH_MINOR_VERSION@; Flags: uninsdeletevalue
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Delete the created config script on uninstall
@@ -473,24 +487,47 @@ begin
 end;
 
 [Languages]
+;; See http://www.jrsoftware.org/files/istrans/ and
+;; https://github.com/jrsoftware/issrc/tree/main/Files/Languages for a
+;; complete list of Inno Setup translations and their
+;; history. Unofficial translations must be downloaded and added to
+;; this repository as is done with Croatian, Greek, Latvian, and
+;; SerbianCyrillic. Note that both Chinese and the Lithuanian
+;; translations were made official for Inno Setup v7.0.2 and are not
+;; in the 6.7.1 distribution supported by the inno_setup@1.2.9 action
+;; so they're included in this repository.
+
+Name: "ar"; MessagesFile: "compiler:Languages\Arabic.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ca"; MessagesFile: "compiler:Languages\Catalan.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-ca.win32-bin.txt"
+Name: "da"; MessagesFile: "compiler:Languages\Danish.isl"
 Name: "de"; MessagesFile: "compiler:Languages\German.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-de.win32-bin.txt"
-Name: "el"; MessagesFile: "compiler:Languages\Greek.isl"
+Name: "el"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Greek.isl"
+Name: "fi"; MessagesFile: "compiler:Languages\Finnish.isl"
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-fr.win32-bin.txt"
-Name: "hr"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Croatian-5.5.3.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-hr.win32-bin.txt"
+Name: "he"; MessagesFile: "compiler:Languages\Hebrew.isl"
+Name: "hr"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Croatian.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-hr.win32-bin.txt"
+Name: "hu"; MessagesFile: "compiler:Languages\Hungarian.isl"
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-it.win32-bin.txt"
 Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
-Name: "lv"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Latvian-5.5.0.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-lv.win32-bin.txt"
+Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
+Name: "li"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Lithuanian.isl"
+Name: "lv"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\Latvian.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-lv.win32-bin.txt"
+Name: "nb"; MessagesFile: "compiler:Languages\Norwegian.isl"
 Name: "nl"; MessagesFile: "compiler:Languages\Dutch.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-nl.win32-bin.txt"
+Name: "po"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "pt"; MessagesFile: "compiler:Languages\Portuguese.isl"
 Name: "pt_BR"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
-Name: "zh_CN"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\ChineseSimplified-5.5.3.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-zh_CN.win32-bin.txt"
-Name: "zh_TW"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\ChineseTraditional-5.5.3.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-zh_TW.win32-bin.txt"
-
-;; See http://www.jrsoftware.org/files/istrans/ for a complete list of
-;; Inno Setup translations. Unofficial translations must be downloaded
-;; and added to this repository as is done with Latvian and Chinese above.
-;; Unofficial translations should be updated when Inno Setup is.
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
+Name: "sk"; MessagesFile: "compiler:Languages\Slovak.isl"
+Name: "sp"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "sr"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\SerbianCyrillic.isl"
+Name: "sv"; MessagesFile: "compiler:Languages\Swedish.isl"
+Name: "ta"; MessagesFile: "compiler:Languages\Tamil.isl"
+Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
+Name: "zh_CN"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\ChineseSimplified.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-zh_CN.win32-bin.txt"
+Name: "zh_TW"; MessagesFile: "@GC_WIN_REPOS_DIR@\inno_setup\ChineseTraditional.isl"; InfoAfterFile: "@GC_WIN_REPOS_DIR@\inno_setup\README-zh_TW.win32-bin.txt"
 
 ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; These are only for improved text messages
