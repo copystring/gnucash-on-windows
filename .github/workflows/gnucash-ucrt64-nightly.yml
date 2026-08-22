@@ -1,8 +1,9 @@
 name: gnucash-ucrt64-nightly
 on: [
-  workflow_dispatch
-  schedule:
-    -cron '0 3 * * *'
+        workflow_dispatch
+        schedule:
+          -cron '0 3 * * *'
+    ]
 permissions: {}
 jobs:
     gnucash_future_ucrt64_bundle:
