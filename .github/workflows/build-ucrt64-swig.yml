@@ -6,12 +6,15 @@ name: Build ucrt64 swig
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [packages]
     paths:
       - 'packages/swig/**'
       - '.github/workflows/build-ucrt64-swig.yml'
       - '.github/actions/publish-ucrt64-repo/**'
+  schedule:
+    - cron: '20 4 * * 3'
 
 env:
   MINGW_ARCH: ucrt64

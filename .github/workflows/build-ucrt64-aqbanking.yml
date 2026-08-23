@@ -8,6 +8,7 @@ name: Build ucrt64 AqBanking group
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [packages]
     paths:
@@ -16,7 +17,8 @@ on:
       - 'packages/aqbanking/**'
       - '.github/workflows/build-ucrt64-aqbanking.yml'
       - '.github/actions/publish-ucrt64-repo/**'
-
+  schedule:
+    - cron: '0 4 * * 3'
 env:
   MINGW_ARCH: ucrt64
 

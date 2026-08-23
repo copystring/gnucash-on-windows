@@ -6,6 +6,7 @@ name: Build ucrt64 libofx group
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [packages]
     paths:
@@ -13,6 +14,8 @@ on:
       - 'packages/libofx/**'
       - '.github/workflows/build-ucrt64-libofx.yml'
       - '.github/actions/publish-ucrt64-repo/**'
+  schedule:
+    - cron: '10 5 * * 3'
 
 env:
   MINGW_ARCH: ucrt64

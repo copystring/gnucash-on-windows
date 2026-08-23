@@ -6,12 +6,15 @@ name: Build ucrt64 guile3
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [packages]
     paths:
       - 'packages/guile3/**'
       - '.github/workflows/build-ucrt64-guile3.yml'
       - '.github/actions/publish-ucrt64-repo/**'
+  schedule:
+    - cron: '0 4 * * 2'
 
 env:
   MINGW_ARCH: ucrt64

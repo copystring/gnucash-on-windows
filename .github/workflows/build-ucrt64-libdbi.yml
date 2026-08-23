@@ -6,6 +6,7 @@ name: Build ucrt64 libdbi group
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [packages]
     paths:
@@ -13,6 +14,8 @@ on:
       - 'packages/libdbi-drivers/**'
       - '.github/workflows/build-ucrt64-libdbi.yml'
       - '.github/actions/publish-ucrt64-repo/**'
+  schedule:
+    - cron: '0 5 * * 3'
 
 env:
   MINGW_ARCH: ucrt64
