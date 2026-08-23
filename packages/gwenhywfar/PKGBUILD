@@ -44,6 +44,7 @@ build() {
     --enable-local-install \
     --disable-binreloc \
     PKGCONFIG="pkg-config --dont-define-prefix" \
+    CFLAGS="-Wl,-lintl" \
     "$@"
 
     make
