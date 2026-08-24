@@ -38,12 +38,18 @@ runs:
       run: |
         set -euo pipefail
         cd "${{ inputs.package-dir }}"
+        echo "::group::Contents of ${{ inputs.package-dir }} before repo-add"
+        ls -la
+        echo "::endgroup::"
         repo-add gnc-ucrt64.db.tar.zst *.pkg.tar.zst
         # repo-add normally symlinks the extensionless names to these; GitHub
         # Release assets don't reliably preserve symlinks, and pacman fetches
         # the repo by the extensionless name, so write real copies instead.
         cp -L gnc-ucrt64.db.tar.zst gnc-ucrt64.db
         cp -L gnc-ucrt64.files.tar.zst gnc-ucrt64.files
+        echo "::group::Contents of ${{ inputs.package-dir }} after repo-add"
+        ls -la
+        echo "::endgroup::"
 
     - name: Upload new/updated assets
       shell: pwsh
@@ -51,9 +57,34 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: |
         $assets = Get-ChildItem -Path '${{ inputs.package-dir }}' -File | ForEach-Object { $_.FullName }
-        gh release upload ${{ inputs.release-tag }} $assets --clobber *>$null
+        Write-Host "Found $($assets.Count) file(s) to publish in '${{ inputs.package-dir }}':"
+        $assets | ForEach-Object { Write-Host "  $_" }
+        if ($assets.Count -eq 0) {
+          Write-Error "No files found in '${{ inputs.package-dir }}' -- refusing to call gh with an empty file list, since gh release upload silently no-ops in that case instead of failing."
+          exit 1
+        }
+
+        gh release upload ${{ inputs.release-tag }} $assets --clobber
+        Write-Host "gh release upload exit code: $LASTEXITCODE"
         if ($LASTEXITCODE -ne 0) {
           gh release create ${{ inputs.release-tag }} $assets `
             --title "GnuCash ucrt64 dependency repo" `
             --notes "Auto-generated rolling pacman repository for ucrt64. Do not edit manually; updated incrementally by workflows under .github/workflows/."
+          Write-Host "gh release create exit code: $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "gh release create failed (exit $LASTEXITCODE) after gh release upload also failed -- see output above for the actual error."
+            exit 1
+          }
+        }
+
+        # Belt-and-braces: pacman needs to fetch these assets anonymously, so
+        # the release must actually be published, not a draft. Force it every
+        # run regardless of how it got here (gh release upload succeeds
+        # against a draft release just as happily as a published one, so a
+        # stray draft -- however it was created -- would otherwise keep
+        # silently absorbing every publish with no visible error).
+        gh release edit ${{ inputs.release-tag }} --draft=false
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "gh release edit --draft=false failed (exit $LASTEXITCODE) -- the release may still be a draft and unreachable by anonymous downloads."
+          exit 1
         }
