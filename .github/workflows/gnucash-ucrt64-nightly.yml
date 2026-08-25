@@ -36,6 +36,7 @@ jobs:
         - name: Checkout our inno_setup and extra_dist directories
           uses: actions/checkout@v7
           with:
+            ref: ${{ github.sh || 'future' }}
             sparse-checkout: |
                 extra_dist
                 inno_setup
