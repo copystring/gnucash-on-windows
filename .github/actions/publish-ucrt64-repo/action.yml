@@ -64,27 +64,26 @@ runs:
           exit 1
         }
 
-        gh release upload ${{ inputs.release-tag }} $assets --clobber
-        Write-Host "gh release upload exit code: $LASTEXITCODE"
+        gh release view ${{ inputs.release-tag }} *>$null
         if ($LASTEXITCODE -ne 0) {
-          gh release create ${{ inputs.release-tag }} $assets `
+          # Create it with no assets yet, and publish it immediately, so its
+          # tag is fully materialized before anything is ever uploaded.
+          gh release create ${{ inputs.release-tag }} `
             --title "GnuCash ucrt64 dependency repo" `
             --notes "Auto-generated rolling pacman repository for ucrt64. Do not edit manually; updated incrementally by workflows under .github/workflows/."
-          Write-Host "gh release create exit code: $LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "gh release create failed (exit $LASTEXITCODE) after gh release upload also failed -- see output above for the actual error."
+            Write-Error "gh release create failed (exit $LASTEXITCODE)."
+            exit 1
+          }
+          gh release edit ${{ inputs.release-tag }} --draft=false
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "gh release edit --draft=false failed (exit $LASTEXITCODE)."
             exit 1
           }
         }
 
-        # Belt-and-braces: pacman needs to fetch these assets anonymously, so
-        # the release must actually be published, not a draft. Force it every
-        # run regardless of how it got here (gh release upload succeeds
-        # against a draft release just as happily as a published one, so a
-        # stray draft -- however it was created -- would otherwise keep
-        # silently absorbing every publish with no visible error).
-        gh release edit ${{ inputs.release-tag }} --draft=false
+        gh release upload ${{ inputs.release-tag }} $assets --clobber
         if ($LASTEXITCODE -ne 0) {
-          Write-Error "gh release edit --draft=false failed (exit $LASTEXITCODE) -- the release may still be a draft and unreachable by anonymous downloads."
+          Write-Error "gh release upload failed (exit $LASTEXITCODE)."
           exit 1
         }
