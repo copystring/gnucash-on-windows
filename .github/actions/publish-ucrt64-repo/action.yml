@@ -15,6 +15,13 @@ inputs:
     description: Tag of the shared rolling release to update
     required: false
     default: gnc-ucrt64-repo
+  target-branch:
+    description: >-
+      Branch to create the release tag against. Must be the repository's
+      actual default branch (see note below), regardless of which branch
+      this action itself runs from.
+    required: false
+    default: master
 
 runs:
   using: composite
@@ -68,7 +75,16 @@ runs:
         if ($LASTEXITCODE -ne 0) {
           # Create it with no assets yet, and publish it immediately, so its
           # tag is fully materialized before anything is ever uploaded.
+          # --target is pinned to the repo's actual default branch rather
+          # than left to auto-detect: without it, a newly created tag targets
+          # whatever branch is set as default *at that moment*. If that ever
+          # differs from the default branch later (e.g. it gets flipped back
+          # after a temporary change), the tag is no longer reachable from
+          # default-branch history, and GitHub's tag/release enforcement
+          # eventually demotes the release back to an unpublished, untagged
+          # state on its own -- with no error, hours after the fact.
           gh release create ${{ inputs.release-tag }} `
+            --target ${{ inputs.target-branch }} `
             --title "GnuCash ucrt64 dependency repo" `
             --notes "Auto-generated rolling pacman repository for ucrt64. Do not edit manually; updated incrementally by workflows under .github/workflows/."
           if ($LASTEXITCODE -ne 0) {
