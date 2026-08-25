@@ -1,0 +1,46 @@
+# Run the nightly build on the future branch because scheduled
+# workflows run only on the default branch and that's not future.
+on:
+    workflow_dispatch:
+    schedule:
+        - cron: "0 6 * * *"
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.evaluate.outputs.should_run }}
+    steps:
+      - name: Check for updates in gnucash future
+        id: check-updates
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: 'gnucash'
+          REPO:  'gnucash'
+          BRANCH: 'future'
+        run: |
+          SINCE_DATE=$(date -u -d '24 hours ago' +'%Y-%m-%dT%H:%M:%SZ')
+          COMMIT_COUNT=$(gh api "repos/$OWNER/$REPO/commits" \
+            -F sha="$BRANCH" \
+            -F since="$SINCE_DATE" \
+            --jq 'length')
+          if [ "$COMMIT_COUNT" -gt 0 ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Check whether to run
+        id: evaluate
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] || \
+              [ "${{ steps.check-updates.outputs.has_changes }}" == "true" ]; then
+             echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+             echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
+  call-workflow:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_run == 'true'
+    uses: gnucash/gnucash-on-windows/.github/workflows/gnucash-ucrt64-nightly.yml@future

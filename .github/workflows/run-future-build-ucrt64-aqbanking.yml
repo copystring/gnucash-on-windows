@@ -1,0 +1,10 @@
+# Run the nightly build on the future branch because scheduled
+# workflows run only on the default branch and that's not future.
+on:
+    workflow_dispatch:
+    schedule:
+        - cron: "0 7 1 1,4,7,10 *"
+
+jobs:
+    call-workflow:
+        uses: gnucash/gnucash-on-windows/.github/workflows/build-ucrt64-aqbanking.yml@future
