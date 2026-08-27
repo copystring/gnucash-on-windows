@@ -44,3 +44,17 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.should_run == 'true'
     uses: gnucash/gnucash-on-windows/.github/workflows/gnucash-ucrt64-nightly.yml@future
+
+  show-artifact-url:
+    needs: call-workflow
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show nightly build artifact URL
+        run: |
+          URL="${{ needs.call-workflow.outputs.artifact-url }}"
+          if [ -n "$URL" ]; then
+            echo "Nightly build artifact: $URL"
+          else
+            echo "No nightly build artifact was produced this run."
+          fi
