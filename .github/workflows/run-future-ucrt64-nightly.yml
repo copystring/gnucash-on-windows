@@ -3,7 +3,7 @@
 on:
     workflow_dispatch:
     schedule:
-        - cron: "0 6 * * *"
+        - cron: "33 9 * * *"
 
 jobs:
   check-changes:
@@ -21,7 +21,7 @@ jobs:
           BRANCH: 'future'
         run: |
           SINCE_DATE=$(date -u -d '24 hours ago' +'%Y-%m-%dT%H:%M:%SZ')
-          COMMIT_COUNT=$(gh api "repos/$OWNER/$REPO/commits" \
+          COMMIT_COUNT=$(gh api -X GET "repos/$OWNER/$REPO/commits" \
             -F sha="$BRANCH" \
             -F since="$SINCE_DATE" \
             --jq 'length')
