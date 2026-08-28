@@ -79,3 +79,5 @@ jobs:
         uses: ./.github/actions/publish-ucrt64-repo
         with:
           package-dir: repo-out
+          app-client-id: ${{ vars.DEPS_REPO_APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.DEPS_REPO_APP_PRIVATE_KEY }}

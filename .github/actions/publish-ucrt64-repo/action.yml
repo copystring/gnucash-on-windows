@@ -7,15 +7,24 @@ description: >-
   and the caller's workflow must set a shared `concurrency: group:` (the
   same one across all callers) so two publishes never race on the same
   release. Requires a GitHub App installed on deps-repo with Contents:
-  read/write, its client ID in vars.DEPS_REPO_APP_CLIENT_ID and its private
-  key in secrets.DEPS_REPO_APP_PRIVATE_KEY (both read from the calling
-  workflow's repo, i.e. gnucash-on-windows) -- the default GITHUB_TOKEN can
-  never be used here, since it is strictly scoped to the repo the workflow
-  runs in and cannot write to a different repo even within the same org.
+  read/write; the caller must pass its client ID and private key in as
+  app-client-id/app-private-key (a composite action's own manifest has no
+  access to the vars/secrets contexts -- only inputs/github/env -- so these
+  can't be read directly here and must be threaded through from the calling
+  workflow, which does have access to them). The default GITHUB_TOKEN can
+  never be used here instead, since it is strictly scoped to the repo the
+  workflow runs in and cannot write to a different repo even within the
+  same org.
 
 inputs:
   package-dir:
     description: Directory containing the newly built .pkg.tar.zst file(s)
+    required: true
+  app-client-id:
+    description: Client ID of the GitHub App installed on deps-repo.
+    required: true
+  app-private-key:
+    description: Private key of the GitHub App installed on deps-repo.
     required: true
   deps-repo-owner:
     description: Owner of the repo hosting the rolling release.
@@ -50,8 +59,8 @@ runs:
       id: app-token
       uses: actions/create-github-app-token@v3
       with:
-        client-id: ${{ vars.DEPS_REPO_APP_CLIENT_ID }}
-        private-key: ${{ secrets.DEPS_REPO_APP_PRIVATE_KEY }}
+        client-id: ${{ inputs.app-client-id }}
+        private-key: ${{ inputs.app-private-key }}
         owner: ${{ inputs.deps-repo-owner }}
         repositories: ${{ inputs.deps-repo-name }}
 
