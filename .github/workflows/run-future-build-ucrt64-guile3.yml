@@ -7,4 +7,5 @@ on:
 
 jobs:
     call-workflow:
+        if github.event_name == 'workflow_dispatch' || github.repository == 'gnucash/gnucash-on-windows'
         uses: gnucash/gnucash-on-windows/.github/workflows/build-ucrt64-guile3.yml@future
