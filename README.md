@@ -205,7 +205,7 @@ library or for it to run under MinGW.
 These packages need to be updated periodically to remain up to
 date. There are GitHub workflows on this project that maintains a
 pacman repository of the dependencies at
-https://github.com/gnucash/gnucash-on-windows/releases/download/gnc-ucrt64-repo/.
+https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/.
 You can use this repository instead of building and installing the
 packages yourself by making the following changes to
 `/etc/pacman.conf` in your MSYS2 installation:
@@ -217,7 +217,7 @@ and replace it with
 ```
 [gnc-ucrt64]
 SigLevel = Optional TrustAll
-Server = "https://github.com/gmucash/gnucash-on-windows/releases/download/gnc-ucrt64-repo/"
+Server = "https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/"
 ```
 ## Other files:
 * `inno_setup/`: Configuration and localization files for building ```gnucash-xxx-setup.exe` with Inno Setup.

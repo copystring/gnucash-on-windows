@@ -137,7 +137,7 @@ if (!(test-path -path $bash_path)) {
     exit
 }
 
-$ucrt_repo_url = "https://github.com/gnucash/gnucash-on-windows/releases/download/gnc-ucrt64-repo/"
+$ucrt_repo_url = "https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/"
 
 $html_help_workshop_url =  "http://web.archive.org/web/20160201063255/http://download.microsoft.com/download/0/A/9/0A939EF6-E31C-430F-A3DF-DFAE7960D564/htmlhelp.exe"
 $html_help_workshop_installer = "htmlhelp.exe"

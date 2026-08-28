@@ -1,39 +1,69 @@
 name: Publish to ucrt64 rolling repo
 description: >-
   Merges newly built ucrt64 package(s) into the shared gnc-ucrt64-repo
-  rolling GitHub release without disturbing packages published by other
-  workflows. Must run after msys2/setup-msys2 in a job whose default shell
-  is `msys2 {0}`, and the caller's workflow must set a shared
-  `concurrency: group:` (the same one across all callers) so two publishes
-  never race on the same release.
+  rolling GitHub release, hosted in a separate repo from the one this action
+  runs in, without disturbing packages published by other workflows. Must
+  run after msys2/setup-msys2 in a job whose default shell is `msys2 {0}`,
+  and the caller's workflow must set a shared `concurrency: group:` (the
+  same one across all callers) so two publishes never race on the same
+  release. Requires a GitHub App installed on deps-repo with Contents:
+  read/write, its client ID in vars.DEPS_REPO_APP_CLIENT_ID and its private
+  key in secrets.DEPS_REPO_APP_PRIVATE_KEY (both read from the calling
+  workflow's repo, i.e. gnucash-on-windows) -- the default GITHUB_TOKEN can
+  never be used here, since it is strictly scoped to the repo the workflow
+  runs in and cannot write to a different repo even within the same org.
 
 inputs:
   package-dir:
     description: Directory containing the newly built .pkg.tar.zst file(s)
     required: true
+  deps-repo-owner:
+    description: Owner of the repo hosting the rolling release.
+    required: false
+    default: Gnucash
+  deps-repo-name:
+    description: >-
+      Name (no owner) of the repo hosting the rolling release. Deliberately
+      a separate repo from the one this action runs in:
+      gnucash/gnucash-on-windows is a mirror of code.gnucash.org, and any
+      ref not present upstream -- including a tag created only via the
+      GitHub API, anchoring this release -- gets pruned when the mirror
+      syncs, silently reverting the release to an unpublished, untagged
+      state hours later with no error.
+    required: false
+    default: gnucash-windows-deps-repo
   release-tag:
     description: Tag of the shared rolling release to update
     required: false
     default: gnc-ucrt64-repo
   target-branch:
     description: >-
-      Branch to create the release tag against. Must be the repository's
-      actual default branch (see note below), regardless of which branch
-      this action itself runs from.
+      Branch (in deps-repo) to create the release tag against. Must be
+      deps-repo's actual default branch (see note below).
     required: false
-    default: master
+    default: future
 
 runs:
   using: composite
   steps:
+    - name: Generate deps-repo installation token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ vars.DEPS_REPO_APP_CLIENT_ID }}
+        private-key: ${{ secrets.DEPS_REPO_APP_PRIVATE_KEY }}
+        owner: ${{ inputs.deps-repo-owner }}
+        repositories: ${{ inputs.deps-repo-name }}
+
     - name: Fetch current repo database, if any
       shell: pwsh
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         # Fails harmlessly on the very first-ever publish, before the
         # release or these particular files exist.
         gh release download ${{ inputs.release-tag }} `
+          -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} `
           --pattern 'gnc-ucrt64.db.tar.zst' `
           --pattern 'gnc-ucrt64.files.tar.zst' `
           --dir '${{ inputs.package-dir }}' `
@@ -61,7 +91,7 @@ runs:
     - name: Upload new/updated assets
       shell: pwsh
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         $assets = Get-ChildItem -Path '${{ inputs.package-dir }}' -File | ForEach-Object { $_.FullName }
         Write-Host "Found $($assets.Count) file(s) to publish in '${{ inputs.package-dir }}':"
@@ -71,11 +101,11 @@ runs:
           exit 1
         }
 
-        gh release view ${{ inputs.release-tag }} *>$null
+        gh release view ${{ inputs.release-tag }} -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} *>$null
         if ($LASTEXITCODE -ne 0) {
           # Create it with no assets yet, and publish it immediately, so its
           # tag is fully materialized before anything is ever uploaded.
-          # --target is pinned to the repo's actual default branch rather
+          # --target is pinned to deps-repo's actual default branch rather
           # than left to auto-detect: without it, a newly created tag targets
           # whatever branch is set as default *at that moment*. If that ever
           # differs from the default branch later (e.g. it gets flipped back
@@ -84,6 +114,7 @@ runs:
           # eventually demotes the release back to an unpublished, untagged
           # state on its own -- with no error, hours after the fact.
           gh release create ${{ inputs.release-tag }} `
+            -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} `
             --target ${{ inputs.target-branch }} `
             --title "GnuCash ucrt64 dependency repo" `
             --notes "Auto-generated rolling pacman repository for ucrt64. Do not edit manually; updated incrementally by workflows under .github/workflows/."
@@ -91,14 +122,14 @@ runs:
             Write-Error "gh release create failed (exit $LASTEXITCODE)."
             exit 1
           }
-          gh release edit ${{ inputs.release-tag }} --draft=false
+          gh release edit ${{ inputs.release-tag }} -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} --draft=false
           if ($LASTEXITCODE -ne 0) {
             Write-Error "gh release edit --draft=false failed (exit $LASTEXITCODE)."
             exit 1
           }
         }
 
-        gh release upload ${{ inputs.release-tag }} $assets --clobber
+        gh release upload ${{ inputs.release-tag }} $assets -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} --clobber
         if ($LASTEXITCODE -ne 0) {
           Write-Error "gh release upload failed (exit $LASTEXITCODE)."
           exit 1

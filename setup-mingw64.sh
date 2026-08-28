@@ -79,7 +79,7 @@ for arch in $MINGW_ARCH; do
         ucrt64)
             arch_repo=$(grep gnc-$arch /etc/pacman.conf)
             if [ -z "$arch_repo" ]; then
-              sed -i "/^# SigLevel = Never/a [gnc-$arch]\nSigLevel = Optional TrustAll\nServer = https://github.com/gnucash/gnucash-on-windows/releases/download/gnc-ucrt64-repo/\n" /etc/pacman.conf
+              sed -i "/^# SigLevel = Never/a [gnc-$arch]\nSigLevel = Optional TrustAll\nServer = https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/\n" /etc/pacman.conf
             fi
             pacman -Sy --noconfirm
             install-deps "ucrt-x86_64"
