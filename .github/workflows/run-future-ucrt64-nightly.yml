@@ -35,10 +35,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] || \
              ([ "${{ steps.check-updates.outputs.has_changes }}" == "true" ] && \
-              [ ${{ github.repository == "gnucash/gnucash-on-windows" }}]) ; then
+              [ ${{ github.repository }} == "gnucash/gnucash-on-windows" ]) ; then
              echo "should_run=true" >> $GITHUB_OUTPUT
           else
-             echo "should_run=true" >> $GITHUB_OUTPUT
+             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
   call-workflow:
