@@ -37,7 +37,7 @@ jobs:
             sed -i "s/^# ParallelDownloads/ParallelDownloads/" /etc/pacman.conf
 
             pacman -Syv
-            pacboy --noconfirm -S swig:p appstream-glib:p aqbanking:p boost:p gsettings-desktop-schemas:p docbook-xsl:p gettext-tools:p gtest:p guile3:p harfbuzz-icu:p icu:p iso-codes:p pdcurses:p libdbi-drivers:p libofx:p libsecret:p webview2-loader:p zlib:p
+            pacboy --noconfirm -S swig:p appstream-glib:p aqbanking:p boost:p gtk4:p gsettings-desktop-schemas:p docbook-xsl:p gettext-tools:p gtest:p guile3:p harfbuzz-icu:p icu:p iso-codes:p pdcurses:p libdbi-drivers:p libofx:p libsecret:p webview2-loader:p zlib:p
 
         - name: Checkout our inno_setup and extra_dist directories
           uses: actions/checkout@v7
@@ -68,7 +68,7 @@ jobs:
           run: |
             mkdir $RUNNER_TEMP/inst
             mkdir $RUNNER_TEMP/gnucash-build && cd $RUNNER_TEMP/gnucash-build
-            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" -DCMAKE_PREFIX_PATH=$MSYSTEM_PREFIX -DSWIG_DIR=$MSYSTEM_PREFIX/share/swig/4.4.1 -DGNC_DBD_DIR=$MSYSTEM_PREFIX/lib/dbd $GITHUB_WORKSPACE/gnucash-git
+            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" -DCMAKE_PREFIX_PATH=$MSYSTEM_PREFIX -DGNC_DBD_DIR=$MSYSTEM_PREFIX/lib/dbd $GITHUB_WORKSPACE/gnucash-git
 
         - name: Build GnuCash
           env:
@@ -98,7 +98,7 @@ jobs:
             for dir in "$MSYSTEM_PREFIX"/share/locale/* ; do
               [ -d "$dir" ] || continue
               export lang=$(basename "$dir")
-              for msgcat in gtk30.mo gtk30-properties.mo iso_4217.mo aqbanking.mo gwenhywfar.mo ; do
+              for msgcat in gtk40.mo iso_4217.mo aqbanking.mo gwenhywfar.mo ; do
                 if [ -f "$dir/LC_MESSAGES/$msgcat" ]; then
                   [ -d "$RUNNER_TEMP/inst/share/locale/$lang/LC_MESSAGES" ] || mkdir -p "$RUNNER_TEMP/inst/share/locale/$lang/LC_MESSAGES"
                   cp "$dir/LC_MESSAGES/$msgcat" "$RUNNER_TEMP/inst/share/locale/$lang/LC_MESSAGES"

@@ -100,13 +100,11 @@ Source: "@INST_DIR@\share\doc\@PACKAGE@-docs\*.hhmap"; DestDir: "{app}\share\@PA
 
 ;;;; The second section retrieves the dependencies that we need from MinGW.
 ;; Required DLLs
-;; gnucash.exe: libglib-2.0-0.dll, libgtk-3-0.dll, ligdk-3-0.dll, libatk-1.0-dll, libgobject-2.0-0.dll, libintl-8.dll, libcairo-gobject-2.dll, libcairo-2.dll, libfontconfig-1.0.dll, libcrypto-3-x64.dll, libfreetype-6.dll, libpixman-1-0.dll, libpng16-16.dll, zlib1.dll, libgdk-pixbuf-2.0-0.dll, libgio-2.0-0.dll, libgmodule-2.0-0.dll, libpango-1.0-0.dll, libpangocairo-1.0-0.dll, libpangowin32-1.0-0.dll, libpangoft2-1.0-0.dll, libpcre2-8-0.dll, libharfbuzz-0.dll, libharpyuv-0.dll, libfribidi-0.dll, libiconv-2.dll, libwinpthread-1.dll, libsecret-1-0.dll, libsystre-0.dll, libxml2-2.dll, libxml2-16.dll, libxslt-1.dll, libicuuc57.dll, libicudt57.dll, libtre-5.dll, libffi-8.dll, libgmp-10.dll, libltdl-7.dll
-;; AQBanking: libgcrypt-20.dll, libgnutls-30.dll, libwinpthread-1.0.dll, libgmp-10.dll, libhogweed-6.dll, libidn-11.dll, libintl-8.dll, libnettle-8.dll, libp11-kit-0.dll, libtasn1-6.dll, zlib1.dll, libgpg-error-0.dll, libiconv-2.dll, libintl-8.dll, libgtk-win32-2.0-0.dll
-;; libwebkit: libbrotlicommon.dll, libbrotlidec.dll libharfbuzz-icu-0.dll, liborc-0.4-0.dll, libgsttag-1.0-0.dll, libgraphite2.dll, libicudt65.dll, libicuin65.dll, liicuuc65.dll, libicudt.dll, libsoup-2.4-1.dll, libsqlite3-0.dll, libssl-3.dll, libstdc__-6.dll, libunistring-5.dll, libwebp-7.dll
+;; Keep this list in sync with the recursive PE import closure of GnuCash and
+;; the plugin directories copied below. Runtime-loaded plugins remain explicit.
 ;;lib/dbd/libdbdmysql.dll: libmariadb.dll, libeay32.dll, ssleay32.dll
 ;;lib/dbd/libdbdpgsql.dll: ssleay32.dll, libeay32.dll
 
-Source: "@MINGW_DIR@\bin\libatk-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libaqbanking-44.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libatomic_ops-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libatomic_ops_gpl-1.dll"; DestDir: "{app}\bin"; Components: main
@@ -121,6 +119,7 @@ Source: "@MINGW_DIR@\bin\libbrotlicommon.dll"; DestDir: "{app}\bin"; Components:
 Source: "@MINGW_DIR@\bin\libbrotlienc.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcairo-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcairo-gobject-2.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libcairo-script-interpreter-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libchipcard-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcurl-4.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libcrypto-3-x64.dll"; DestDir: "{app}\bin"; Components: main
@@ -135,7 +134,6 @@ Source: "@MINGW_DIR@\bin\libfreetype-6.dll"; DestDir: "{app}\bin"; Components: m
 Source: "@MINGW_DIR@\bin\libfribidi-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgc-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgcrypt-20.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libgdk-3-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgdk_pixbuf-2.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgio-2.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libglib-2.0-0.dll"; DestDir: "{app}\bin"; Components: main
@@ -144,15 +142,28 @@ Source: "@MINGW_DIR@\bin\libgmp-10.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgnutls-30.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgobject-2.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgpg-error-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgraphene-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgraphite2.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libgtk-3-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstallocators-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstaudio-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstbase-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstd3d12-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstd3dshader-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstgl-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstpbutils-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstplay-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstreamer-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgsttag-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgstvideo-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgtk-4-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libguile-3.0-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgwengui-cpp-79.dll"; DestDir: "{app}\bin"; Components: main
-Source: "@MINGW_DIR@\bin\libgwengui-gtk3-79.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libgwengui-gtk4-79.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libgwenhywfar-79.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libharfbuzz-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libharfbuzz-icu-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libhogweed-7.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libharfbuzz-subset-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libiconv-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libicudt*.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libicuin*.dll"; DestDir: "{app}\bin"; Components: main
@@ -165,7 +176,13 @@ Source: "@MINGW_DIR@\bin\libLerc.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libltdl-7.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\liblzma-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libnettle-9.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\liblzo2-2.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libofx-7.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libnghttp2-14.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libnghttp3-9.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libngtcp2_crypto_ossl-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libngtcp2-16.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\liborc-0.4-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libosp-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libp11-kit-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpango-1.0-0.dll"; DestDir: "{app}\bin"; Components: main
@@ -179,6 +196,7 @@ Source: "@MINGW_DIR@\bin\libpixman-1-0.dll"; DestDir: "{app}\bin"; Components: m
 Source: "@MINGW_DIR@\bin\libpng16-16.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libpsl-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\librsvg-2-2.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libreadline8.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsharpyuv-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libsqlite3-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libssh2-1.dll"; DestDir: "{app}\bin"; Components: main
@@ -188,6 +206,7 @@ Source: "@MINGW_DIR@\bin\libsecret-1-0.dll"; DestDir: "{app}\bin"; Components: m
 Source: "@MINGW_DIR@\bin\libsystre-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libtasn1-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libthai-0.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\libtermcap-0.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libtiff-6.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libtre-5.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libunistring-5.dll"; DestDir: "{app}\bin"; Components: main
@@ -204,6 +223,7 @@ Source: "@MINGW_DIR@\bin\libxslt-1.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libzstd.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\libmariadb.dll"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\zlib1.dll"; DestDir: "{app}\bin"; Components: main
+Source: "@MINGW_DIR@\bin\vulkan-1.dll"; DestDir: "{app}\bin"; Components: main
 
 Source: "@MINGW_DIR@\bin\gspawn-win64-helper.exe"; DestDir: "{app}\bin"; Components: main
 Source: "@MINGW_DIR@\bin\gspawn-win64-helper-console.exe"; DestDir: "{app}\bin"; Components: main
@@ -223,10 +243,10 @@ Source: "@MINGW_DIR@\share\libofx\*"; DestDir: "{app}\share\libofx"; Flags: recu
 Source: "@MINGW_DIR@\share\OpenSP\*"; DestDir: "{app}\share\OpenSP"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\icons\*"; DestDir: "{app}\share\icons"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Flags: recursesubdirs; Components: main
+Source: "@MINGW_DIR@\share\gtk-4.0\*"; DestDir: "{app}\share\gtk-4.0"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\iso-codes\*"; DestDir: "{app}\share\xml\iso-codes"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\fontconfig\*"; DestDir: "{app}\share\xml\fontconfig"; Flags: recursesubdirs; Components: main
 
-Source: "@MINGW_DIR@\etc\gtk-3.0\*"; Destdir: "{app}\etc\gtk-3.0"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\etc\fonts\*"; DestDir: "{app}\etc\fonts"; Flags: recursesubdirs; Components: main
 
 ;; The powershell script to install Finance::Quote:

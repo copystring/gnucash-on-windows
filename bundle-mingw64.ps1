@@ -51,14 +51,16 @@ Optional. Boolean to indicate whether or not this is a git build. Default $true
 #>
 
 [CmdletBinding()]
-Param(4
-    [Parameter(Mandatory=$true)] [string]$mingw_prefix=c:\gcdev64\msys2\ucrt64,
-    [Parameter(Mandatory=$true)] [string]$gnc_build_dir=c:\gcdev64\gnucash-build
-    [Parameter(Mandatory=$true)] [string],$prefix=c:\gcdev64\inst
-    [Parameter(Mandatory=$true)] [bool]$git_build=$true
+Param(
+    [string]$mingw_prefix='c:\gcdev64\msys2\ucrt64',
+    [string]$gnc_build_dir='c:\gcdev64\gnucash-build',
+    [string]$prefix='c:\gcdev64\inst',
+    [bool]$git_build=$true
 )
 
 $script_dir = Split-Path $script:MyInvocation.MyCommand.Path
+$target_dir = $script_dir
+$msys2_dir = Split-Path $mingw_prefix -Parent
 
 $progressPreference = 'silentlyContinue'
 
@@ -79,12 +81,12 @@ function version_item([string]$tag, [string]$path) {
 
 function bash-command() {
     param ([string]$command = "")
-    if (!(test-path -path $root_dir\msys2\usr\bin\bash.exe)) {
+    if (!(test-path -path $msys2_dir\usr\bin\bash.exe)) {
 	write-host "Shell program not found, aborting."
 	exit
     }
     #write-host "Running bash command ""$command"""
-    Start-Process -FilePath "$root_dir\msys2\usr\bin\bash.exe" -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -Wait
+    Start-Process -FilePath "$msys2_dir\usr\bin\bash.exe" -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -Wait
 }
 
 function make-unixpath([string]$path) {
@@ -109,10 +111,10 @@ $minor_version = version_item -tag "PROJECT_VERSION_MINOR" -path $gnc_config_h
 $package_version = "$major_version.$minor_version"
 
 $date = get-date -format "yyyy-MM-dd"
-$setup_result =  "$prefix\gnucash-$package_version.setup.exe"
+$setup_result = "$target_dir\gnucash-$package_version.setup.exe"
 $final_file = ""
 if ($git_build) {
-  $gnc_vcsinfo_h = "$target_dir\build\gnucash-git\libgnucash\core-utils\gnc-vcs-info.h"
+  $gnc_vcsinfo_h = "$gnc_build_dir\libgnucash\core-utils\gnc-vcs-info.h"
   $vcs_rev = version_item -tag "GNC_VCS_REV" -path $gnc_vcsinfo_h | %{$_ -replace """", ""}
   $final_file = "$target_dir\gnucash-$package_version-$date-git-$vcs_rev.setup.exe"
   }
@@ -122,7 +124,7 @@ else {
 
 $schema_dir = "share\glib-2.0\schemas"
 $target_schema_dir = "$prefix\$schema_dir"
-copy-item $mingw_prefix\$schema_dir\org.gtk.Settings.* $target_schema_dir
+copy-item $mingw_prefix\$schema_dir\org.gtk.gtk4.Settings.* $target_schema_dir
 $target_schema_unix = make-unixpath -path $target_schema_dir
 $schema_compiler = make-unixpath -path "$mingw_prefix\bin\glib-compile-schemas"
 bash-command("$schema_compiler $target_schema_unix")
@@ -132,7 +134,7 @@ bash-command("$schema_compiler $target_schema_unix")
 
 $source_locale_dir = "$mingw_prefix\share\locale"
 $inst_locale_dir = "$prefix\share\locale"
-foreach ($msgcat in "gtk30.mo", "gtk32-properties.mo", "iso_4217.mo ", "aqbanking.mo", "gwenhywfar.mo") {
+foreach ($msgcat in "gtk40.mo", "iso_4217.mo", "aqbanking.mo", "gwenhywfar.mo") {
     foreach ($dir in get-childitem -Directory $source_locale_dir) {
 	$source_path = "$source_locale_dir\$dir\LC_MESSAGES"
 	$inst_path = "$inst_locale_dir\$dir\LC_MESSAGES"
@@ -143,15 +145,15 @@ foreach ($msgcat in "gtk30.mo", "gtk32-properties.mo", "iso_4217.mo ", "aqbankin
 }
 # We also need to consolidate the GSettings schemas and compile them.
 copy-item "$mingw_prefix\share\glib-2.0\schemas\*.gschema.xml" "$prefix\share\glib-2.0\schemas"
-bash-command("$mingw_prefix/bin/glib-compile-schemas" "$prefix/share/glib-2.0/schemas")
+bash-command("$schema_compiler $target_schema_unix")
 
 # configure gnucash.iss
 
-$msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
+$msys_prefix = (Resolve-Path $mingw_prefix).Path
 
 $content = Get-Content -Raw -Path inno_setup\gnucash-mingw64.iss
 $content = $content.replace("@MINGW_DIR@", "$msys_prefix")
-$content = $content.replace("@INST_DIR@", "$Env:RUNNER_TEMP\inst")
+$content = $content.replace("@INST_DIR@", "$prefix")
 $content = $content.replace("@PACKAGE_VERSION@", "$package_version")
 $content = $content.replace("@PACKAGE@", "gnucash")
 $content = $content.replace("@GNUCASH_MAJOR_VERSION@", "$major_version")
@@ -164,11 +166,32 @@ write-host "Running Inno Setup to create $final_file."
 if (test-path -path $setup_result) {
     remove-item -path $setup_result
 }
-& ${env:ProgramFiles(x86)}\inno\iscc /Q $target_dir\gnucash.iss
+$iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+if (!(Test-Path -LiteralPath $iscc)) {
+    $iscc = Join-Path ${env:ProgramFiles(x86)} 'inno\iscc.exe'
+}
+if (!(Test-Path -LiteralPath $iscc)) {
+    throw 'Inno Setup compiler not found.'
+}
+
+Push-Location $target_dir
+try {
+    & $iscc /Q "$target_dir\gnucash.iss"
+    $iscc_status = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}
+if ($iscc_status -ne 0) {
+    throw "Inno Setup failed with exit code $iscc_status."
+}
 
 if ($git_build) {
   if ((test-path -path $setup_result) -and (test-path -path $final_file)) {
     remove-item $final_file
+  }
+  if (!(test-path -path $setup_result)) {
+    throw "Inno Setup did not create $setup_result."
   }
   rename-item -path $setup_result $final_file
 }
