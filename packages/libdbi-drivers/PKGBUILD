@@ -2,7 +2,7 @@ _realname=libdbi-drivers
 pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgver=0.9.1
-pkgrel=1
+pkgrel=2
 pkgdesc="LibDBI backend drivers"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -39,7 +39,7 @@ build() {
     --disable-docs \
     --disable-dependency-tracking \
     --with-dbi-incdir="${MINGW_PREFIX}/include" \
-    --with-dbi-libdir="${MINGW_PREFIX}/bin" \
+    --with-dbi-libdir="${MINGW_PREFIX}/lib" \
     --with-mysql \
     --with-pgsql \
     --with-sqlite3 \
