@@ -5,7 +5,7 @@ pkgbranch="#branch=${GNUCASH_BUILD}"
 pkgver=5.16+5_gd548b80 #Dummy placeholder replaced by pkgver() below.
 _release_ver=5.16
 _unstable_ver=4.904
-pkgrel=1
+pkgrel=2
 pkgdesc="Basic Accounting Program"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -26,7 +26,7 @@ depends=("${MINGW_PACKAGE_PREFIX}-appstream-glib"
          "${MINGW_PACKAGE_PREFIX}-gsettings-desktop-schemas"
          "${MINGW_PACKAGE_PREFIX}-freetype"
          "${MINGW_PACKAGE_PREFIX}-glib2"
-         "${MINGW_PACKAGE_PREFIX}-gtk3"
+         "${MINGW_PACKAGE_PREFIX}-gtk4"
          "${MINGW_PACKAGE_PREFIX}-guile3"
          "${MINGW_PACKAGE_PREFIX}-harfbuzz"
          "${MINGW_PACKAGE_PREFIX}-harfbuzz-icu"
@@ -101,11 +101,10 @@ pkgver() {
 build() {
     cd "${srcdir}/build-${MSYSTEM}"
     export GUILE_LOAD_PATH="${MSYSTEM_PREFIX}/share/guile/3.0/"
-    export GUILE_LOAD_COMPILED_PATH="${MSYSTEM_PREFIX}/lib/guile/3.0/ccache)"
+    export GUILE_LOAD_COMPILED_PATH="${MSYSTEM_PREFIX}/lib/guile/3.0/ccache"
     cmake -G Ninja \
           -DCMAKE_INSTALL_PREFIX=${MSYSTEM_PREFIX} \
           -DCMAKE_PREFIX_PATH=${MSYSTEM_PREFIX} \
-          -DSWIG_DIR="${MSYSTEM_PREFIX}/share/swig/4.2.1" \
           "$@" \
           ${srcdir}/${_srcdir}
     ninja

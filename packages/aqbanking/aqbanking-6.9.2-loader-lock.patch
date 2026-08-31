@@ -1,0 +1,32 @@
+diff --git a/src/libs/aqbanking/banking_init.c b/src/libs/aqbanking/banking_init.c
+index b35aa7b..beddcbb 100644
+--- a/src/libs/aqbanking/banking_init.c
++++ b/src/libs/aqbanking/banking_init.c
+@@ -290,26 +290,12 @@ BOOL APIENTRY DllMain(HINSTANCE hInst,
+                       DWORD reason,
+                       LPVOID reserved)
+ {
+-  int err;
+-
+   switch (reason) {
+   case DLL_PROCESS_ATTACH:
+-    err=GWEN_Init();
+-    if (err) {
+-      fprintf(stderr, "Could not initialize Gwenhywfar, aborting\n");
+-      return FALSE;
+-    }
+-    /* DEBUG */
+-    /*fprintf(stderr, "Gwenhywfar initialized.\n");*/
++    DisableThreadLibraryCalls(hInst);
+     break;
+
+   case DLL_PROCESS_DETACH:
+-    err=GWEN_Fini();
+-    if (err) {
+-      fprintf(stderr, "Could not deinitialize Gwenhywfar\n");
+-    }
+-    /* DEBUG */
+-    /*fprintf(stderr, "Gwenhywfar deinitialized.\n");*/
+     break;
+
+   case DLL_THREAD_ATTACH:

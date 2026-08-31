@@ -4,7 +4,7 @@ pkgname="${MINGW_PACKAGE_PREFIX}-${pkgbase}"
 pkgbranch="#branch=mingw2025"
 pkgver="3.0.11"
 pkgsuffix="mingw2025"
-pkgrel=1
+pkgrel=2
 pkgdesc="Guile Scheme Implementation"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -31,13 +31,15 @@ depends=("${MINGW_PACKAGE_PREFIX}-gmp"
 #pkgfull="${_realname}"
 #source=(git+${git_url}${pkgbranch})
 pkgfull=${_realname}-${pkgver}-${pkgsuffix}
-source=(${url}/${pkgfull}.tar.xz)
+source=(${url}/${pkgfull}.tar.xz
+        guile-3.0.11-no-public-math-aliases.patch)
 CFLAGS="$CFLAGS -Wno-incompatible-pointer-types"
 DEBUG_CFLAGS="-ggdb3 -O0 -fno-omit-frame-pointer -Wno-incompatible-pointer-types"
 
 prepare() {
     cd ${srcdir}/${pkgfull}
     # Put patch commands here
+    patch -p1 -i ${srcdir}/guile-3.0.11-no-public-math-aliases.patch
     # autoreconf for git builds or if there are patches.
     # autoreconf -fis
 
@@ -79,4 +81,5 @@ package() {
 }
 
 #sha256sums=('SKIP')
-sha256sums=('4ee93895cc53c07c61e441fb7359aa50d91a48ec1d964462d85d785a99571382')
+sha256sums=('4ee93895cc53c07c61e441fb7359aa50d91a48ec1d964462d85d785a99571382'
+            'c6463904f7ff7cbaff2ea20ed6f275f86a6f322286c22753e4f0720d16132761')

@@ -1,0 +1,11 @@
+diff --git a/libguile/numbers.h b/libguile/numbers.h
+index 4ac3a45ab..586939d53 100644
+--- a/libguile/numbers.h
++++ b/libguile/numbers.h
+@@ -118,4 +118,4 @@
+-# ifdef __MINGW32__
++# if defined __MINGW32__ && defined BUILDING_LIBGUILE
+ #  define copysign _copysign
+ #  define finite _finite
+-# endif /* __MINGW32__ */
++# endif /* __MINGW32__ && BUILDING_LIBGUILE */

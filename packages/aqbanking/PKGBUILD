@@ -3,7 +3,7 @@ pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgver=6.9.2
 rdmdir=654
-pkgrel=1
+pkgrel=2
 pkgdesc="Parse OFX Files"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -16,12 +16,13 @@ depends=(${MINGW_PACKAGE_PREFIX}-gwenhywfar
          ${MINGW_PACKAGE_PREFIX}-xmlsec
          ${MINGW_PACKAGE_PREFIX}-libxslt
          ${MINGW_PACKAGE_PREFIX}-libchipcard)
-source=("${url}/${rdmdir}/${_realname}-${pkgver}.tar.gz")
+source=("${url}/${rdmdir}/${_realname}-${pkgver}.tar.gz"
+        aqbanking-6.9.2-loader-lock.patch)
 
 prepare() {
     cd ${srcdir}/${_realname}-${pkgver}/
 
-    # Put patch commands here
+    patch -p1 -i ${srcdir}/aqbanking-6.9.2-loader-lock.patch
     # autoreconf -fis 
 
     rm -rf ${srcdir}/build-${MSYSTEM}
@@ -50,4 +51,5 @@ package() {
     make -j1 DESTDIR="${pkgdir}" install
 }
 
-sha256sums=('244b5f7a139f829928f5cdc3f5f7488517b3e8aa63625a92741c3efc1892bb3f')
+sha256sums=('244b5f7a139f829928f5cdc3f5f7488517b3e8aa63625a92741c3efc1892bb3f'
+            'ed5785d0a09f126e2e53097944e5e0e66c3e99f64c7414100a47579e69d2e061')

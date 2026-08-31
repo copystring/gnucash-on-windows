@@ -1,0 +1,54 @@
+diff --git a/src/crypt3/cryptkey.c b/src/crypt3/cryptkey.c
+index 9924d6cb..e01ad43d 100644
+--- a/src/crypt3/cryptkey.c
++++ b/src/crypt3/cryptkey.c
+@@ -33,7 +33,6 @@ GWEN_LIST2_FUNCTIONS(GWEN_CRYPT_KEY, GWEN_Crypt_Key)
+
+ int GWEN_Crypt3_ModuleInit(void)
+ {
+-  gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
+   if (!gcry_check_version(NEED_LIBGCRYPT_VERSION)) {
+     const char *gcrypt_version = gcry_check_version(0);
+     DBG_ERROR(GWEN_LOGDOMAIN, "Libgcrypt version mismatch: "
+@@ -41,8 +40,7 @@ int GWEN_Crypt3_ModuleInit(void)
+               NEED_LIBGCRYPT_VERSION, gcrypt_version);
+     return GWEN_ERROR_GENERIC;
+   }
+-  /*gcry_control(GCRYCTL_SET_DEBUG_FLAGS, 1u, 0);*/
+-
++  gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
+   gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+   gcry_control(GCRYCTL_ENABLE_QUICK_RANDOM, 0);
+
+diff --git a/src/os/windows/init.c b/src/os/windows/init.c
+index 97d0b7c6..990d6d16 100644
+--- a/src/os/windows/init.c
++++ b/src/os/windows/init.c
+@@ -47,26 +47,12 @@ BOOL APIENTRY DllMain(HINSTANCE hInst,
+                       DWORD reason,
+                       LPVOID reserved)
+ {
+-  int err;
+-
+   switch (reason) {
+   case DLL_PROCESS_ATTACH:
+-    err=GWEN_Init();
+-    if (err) {
+-      fprintf(stderr, "Could not initialize Gwenhywfar, aborting\n");
+-      return FALSE;
+-    }
+-    /* DEBUG */
+-    /* fprintf(stderr, "Gwenhywfar initialized.\n"); */
++    DisableThreadLibraryCalls(hInst);
+     break;
+
+   case DLL_PROCESS_DETACH:
+-    err=GWEN_Fini();
+-    if (err) {
+-      fprintf(stderr, "Could not deinitialize Gwenhywfar\n");
+-    }
+-    /* DEBUG */
+-    /* fprintf(stderr, "Gwenhywfar deinitialized.\n"); */
+     break;
+
+   case DLL_THREAD_ATTACH:
