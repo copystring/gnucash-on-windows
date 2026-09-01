@@ -38,7 +38,7 @@ Optional. The path to the mingw_arch directory, default c:\gcdev64\msys2\ucrt64
 
 .PARAMETER gnc_build_dir
 
-Optional. The path to the GnuCash build directory, default: c:\gcdev64\gnuncash-build
+Optional. The path to the GnuCash build directory, default: c:\gcdev64\gnucash-build
 
 .PARAMETER prefix
 
@@ -63,6 +63,7 @@ $target_dir = $script_dir
 $msys2_dir = Split-Path $mingw_prefix -Parent
 
 $progressPreference = 'silentlyContinue'
+$ErrorActionPreference = 'Stop'
 
 try {
     $signature =
@@ -75,18 +76,24 @@ catch {} #type already loaded, ignore problem.
 
 
 function version_item([string]$tag, [string]$path) {
-   $splits = select-string -pattern $tag -path $path | %{$_ -split "\s+"}
-   $splits[2]
+    $splits = select-string -pattern $tag -path $path | %{$_ -split "\s+"}
+    if ($splits.Count -lt 3 -or [string]::IsNullOrWhiteSpace($splits[2])) {
+        throw "Unable to read $tag from $path."
+    }
+    return $splits[2]
 }
 
 function bash-command() {
     param ([string]$command = "")
-    if (!(test-path -path $msys2_dir\usr\bin\bash.exe)) {
-	write-host "Shell program not found, aborting."
-	exit
+    $bash = "$msys2_dir\usr\bin\bash.exe"
+    if (!(test-path -LiteralPath $bash)) {
+        throw "Shell program not found: $bash"
     }
     #write-host "Running bash command ""$command"""
-    Start-Process -FilePath "$msys2_dir\usr\bin\bash.exe" -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -Wait
+    $process = Start-Process -FilePath $bash -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -PassThru -Wait
+    if ($process.ExitCode -ne 0) {
+        throw "Bash command failed with exit code $($process.ExitCode): $command"
+    }
 }
 
 function make-unixpath([string]$path) {
