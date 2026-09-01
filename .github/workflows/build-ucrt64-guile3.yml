@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.sh || 'future' }}
+          ref: future
 
       - uses: msys2/setup-msys2@v2
         with:
