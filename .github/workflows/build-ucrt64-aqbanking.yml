@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
   workflow_call:
   push:
-    branches: [packages]
+    branches: [packages, test/gtk4-ucrt64-actions]
     paths:
       - 'packages/gwenhywfar/**'
       - 'packages/libchipcard/**'
@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: future
+          ref: ${{ github.sha }}
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -78,8 +78,17 @@ jobs:
           done
 
       - name: Publish to rolling ucrt64 repo
+        if: github.repository == 'Gnucash/gnucash-on-windows'
         uses: ./.github/actions/publish-ucrt64-repo
         with:
           package-dir: repo-out
           app-client-id: ${{ vars.DEPS_REPO_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.DEPS_REPO_APP_PRIVATE_KEY }}
+
+      - name: Upload packages from fork preflight
+        if: github.repository != 'Gnucash/gnucash-on-windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aqbanking-gtk4-ucrt64-packages
+          path: repo-out/*.pkg.tar.zst
+          if-no-files-found: error
