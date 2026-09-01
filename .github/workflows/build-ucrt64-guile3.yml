@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   workflow_call:
   push:
-    branches: [packages]
+    branches: [packages, test/ucrt64-guile3-action]
     paths:
       - 'packages/guile3/**'
       - '.github/workflows/build-ucrt64-guile3.yml'
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: future
+          ref: ${{ github.sha }}
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -71,8 +71,17 @@ jobs:
           popd
 
       - name: Publish to rolling ucrt64 repo
+        if: github.repository == 'Gnucash/gnucash-on-windows'
         uses: ./.github/actions/publish-ucrt64-repo
         with:
           package-dir: repo-out
           app-client-id: ${{ vars.DEPS_REPO_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.DEPS_REPO_APP_PRIVATE_KEY }}
+
+      - name: Upload package from fork preflight
+        if: github.repository != 'Gnucash/gnucash-on-windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: guile3-ucrt64-package
+          path: repo-out/*.pkg.tar.zst
+          if-no-files-found: error
