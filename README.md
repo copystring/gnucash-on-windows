@@ -38,10 +38,10 @@ packages in the package directory locally.
 
 ## Installation
 
-Download
-[setup-mingw64.ps1](https://github.com/Gnucash/gnucash-on-windows/raw/refs/heads/master/setup-mingw64.ps1)
+Download the setup scripts for the current development series:
+[setup-mingw64.ps1](https://github.com/Gnucash/gnucash-on-windows/raw/refs/heads/future/setup-mingw64.ps1)
 and
-[setup-mingw64.sh](https://github.com/Gnucash/gnucash-on-windows/raw/refs/heads/master/setup-mingw64.sh).
+[setup-mingw64.sh](https://github.com/Gnucash/gnucash-on-windows/raw/refs/heads/future/setup-mingw64.sh).
 
 Start a PowerShell session:
 * Right-click on the Start icon and select ```Terminal``` or ```Terminal
