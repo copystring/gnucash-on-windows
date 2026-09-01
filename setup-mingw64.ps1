@@ -25,8 +25,8 @@ building GnuCash and the GnuCash documentation.
 
 .DESCRIPTION
 
-Installs a single MSYS2 environment (one of mingw32, mingw64, clang64
-or ucrt64; the last is the default and is recommended for development)
+Installs a single MSYS2 environment (either clang64 or ucrt64; the
+latter is the default and is recommended for development)
 including all dependencies.
 
 You may need to allow running scripts on your computer and depending
@@ -187,7 +187,7 @@ if (!(test-path -path $htmlhelp_h)) {
     if (!$installed_hh) {
 	Write-Host @"
 ****** ERROR ***
-There was an error installing HTML Help Workshop. This will prevent building the documentation. If you didn't before, run setup-mingw64.ps1 in a PowerShell instance with Administrative priviledge. If you did that already, you may need to install HTML Help Workshop by hand.
+There was an error installing HTML Help Workshop. This will prevent building the documentation. If you didn't before, run setup-mingw64.ps1 in a PowerShell instance with Administrator privileges. If you did that already, you may need to install HTML Help Workshop by hand.
 ****************
 "@
     } else {
