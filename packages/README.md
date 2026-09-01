@@ -7,10 +7,10 @@ build it. There are also packages to build GnuCash itself and its
 documentation.
 
 Since the MSYS2 project has deprecated the very old msvcrt-based
-architectures mingw32 and mingw34 and has stopped building several
+architectures mingw32 and mingw64 and has stopped building several
 packages that GnuCash requires, the packages in this directory support
 only the ucrt-based architectures ucrt64 and clang64. Building for
-clang64-arm might work but hasn't yet been tested.
+clangarm64 might work but hasn't yet been tested.
 
 Once each package is built you must install it. To install it directly
 run
