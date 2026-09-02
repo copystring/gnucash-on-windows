@@ -83,6 +83,22 @@ function version_item([string]$tag, [string]$path) {
     return $splits[2]
 }
 
+function guile-version([string]$prefix) {
+    $guile = Join-Path $prefix 'bin\guile.exe'
+    if (!(Test-Path -LiteralPath $guile)) {
+        throw "Guile executable not found: $guile"
+    }
+    $version_output = & $guile --version
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to query the Guile version (exit code $LASTEXITCODE)."
+    }
+    $version_match = [regex]::Match(($version_output -join "`n"), '(?m)^guile \(GNU Guile\) (\d+\.\d+)')
+    if (!$version_match.Success) {
+        throw "Unable to parse the Guile major.minor version from: $($version_output -join ' ')"
+    }
+    return $version_match.Groups[1].Value
+}
+
 function bash-command() {
     param ([string]$command = "")
     $bash = "$msys2_dir\usr\bin\bash.exe"
@@ -116,6 +132,7 @@ $gnc_config_h = "$gnc_build_dir\common\config.h"
 $major_version = version_item -tag "PROJECT_VERSION_MAJOR" -path $gnc_config_h
 $minor_version = version_item -tag "PROJECT_VERSION_MINOR" -path $gnc_config_h
 $package_version = "$major_version.$minor_version"
+$guile_version = guile-version -prefix $mingw_prefix
 
 $date = get-date -format "yyyy-MM-dd"
 $setup_result = "$target_dir\gnucash-$package_version.setup.exe"
@@ -165,7 +182,11 @@ $content = $content.replace("@PACKAGE_VERSION@", "$package_version")
 $content = $content.replace("@PACKAGE@", "gnucash")
 $content = $content.replace("@GNUCASH_MAJOR_VERSION@", "$major_version")
 $content = $content.replace("@GNUCASH_MINOR_VERSION@", "$minor_version")
+$content = $content.replace("@GUILE_VERSION@", "$guile_version")
 $content = $content.replace("@GC_WIN_REPOS_DIR@", ".")
+if ($content -match '@[A-Z_]+@') {
+    throw "Unresolved Inno template token: $($matches[0])"
+}
 set-content -Path gnucash.iss -Value $content -Encoding utf8BOM
 
 write-host "Running Inno Setup to create $final_file."

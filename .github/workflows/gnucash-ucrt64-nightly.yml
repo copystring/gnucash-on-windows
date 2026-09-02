@@ -1,6 +1,22 @@
 name: gnucash-ucrt64-nightly
 on:
     workflow_dispatch:
+        inputs:
+            gnucash_repository:
+                description: GnuCash repository to build
+                required: true
+                default: gnucash/gnucash
+                type: string
+            gnucash_ref:
+                description: GnuCash branch, tag, or commit to build
+                required: true
+                default: future
+                type: string
+            dependency_overlay_url:
+                description: Optional Pacman repository URL to place before the GnuCash repository
+                required: false
+                default: ''
+                type: string
     workflow_call:
         outputs:
             artifact-url:
@@ -32,8 +48,19 @@ jobs:
 
         - name: Add our repo
           shell: msys2 {0}
+          env:
+            DEPENDENCY_OVERLAY_URL: ${{ inputs.dependency_overlay_url }}
           run: |
+            set -euo pipefail
             sed -i "/^# SigLevel = Never/a [gnc-ucrt64]\nSigLevel = Optional TrustAll\nServer = https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/" /etc/pacman.conf
+            if [ -n "$DEPENDENCY_OVERLAY_URL" ]; then
+              dependency_overlay_url="${DEPENDENCY_OVERLAY_URL%/}/"
+              if [[ ! "$dependency_overlay_url" =~ ^https://[A-Za-z0-9._/-]+/$ ]]; then
+                echo "Invalid dependency overlay URL: $DEPENDENCY_OVERLAY_URL" >&2
+                exit 1
+              fi
+              sed -i "/^# SigLevel = Never/a [gnc-ucrt64-overlay]\nSigLevel = Optional TrustAll\nServer = $dependency_overlay_url" /etc/pacman.conf
+            fi
             sed -i "s/^# ParallelDownloads/ParallelDownloads/" /etc/pacman.conf
 
             pacman -Syv
@@ -42,7 +69,7 @@ jobs:
         - name: Checkout our inno_setup and extra_dist directories
           uses: actions/checkout@v7
           with:
-            ref: future
+            ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || 'future' }}
             sparse-checkout: |
                 extra_dist
                 inno_setup
@@ -50,8 +77,8 @@ jobs:
         - name: Checkout GnuCash
           uses: actions/checkout@v7
           with:
-            repository: gnucash/gnucash
-            ref: future
+            repository: ${{ inputs.gnucash_repository || 'gnucash/gnucash' }}
+            ref: ${{ inputs.gnucash_ref || 'future' }}
             path: gnucash-git
 
         - name: Checkout GnuCash Docs
@@ -68,7 +95,7 @@ jobs:
           run: |
             mkdir $RUNNER_TEMP/inst
             mkdir $RUNNER_TEMP/gnucash-build && cd $RUNNER_TEMP/gnucash-build
-            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" -DCMAKE_PREFIX_PATH=$MSYSTEM_PREFIX -DGNC_DBD_DIR=$MSYSTEM_PREFIX/lib/dbd $GITHUB_WORKSPACE/gnucash-git
+            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" -DCMAKE_PREFIX_PATH=$MSYSTEM_PREFIX -DGNC_DBD_DIR=$MSYSTEM_PREFIX/lib/dbd -DWITH_AQBANKING=ON $GITHUB_WORKSPACE/gnucash-git
 
         - name: Build GnuCash
           env:
@@ -122,6 +149,10 @@ jobs:
             $package_version = "$major_version.$minor_version"
             "PACKAGE_VERSION=$package_version" | Add-Content $Env:GITHUB_ENV
             $msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
+            $guile_output = & "$msys_prefix\bin\guile.exe" --version
+            if ($LASTEXITCODE -ne 0) { throw "Unable to query Guile version (exit code $LASTEXITCODE)." }
+            $guile_match = [regex]::Match(($guile_output -join "`n"), '(?m)^guile \(GNU Guile\) (\d+\.\d+)')
+            if (!$guile_match.Success) { throw "Unable to parse Guile major.minor version: $($guile_output -join ' ')" }
 
             $content = Get-Content -Raw -Path inno_setup\gnucash-mingw64.iss
             $content = $content.replace("@MINGW_DIR@", "$msys_prefix")
@@ -130,7 +161,9 @@ jobs:
             $content = $content.replace("@PACKAGE@", "gnucash")
             $content = $content.replace("@GNUCASH_MAJOR_VERSION@", "$major_version")
             $content = $content.replace("@GNUCASH_MINOR_VERSION@", "$minor_version")
+            $content = $content.replace("@GUILE_VERSION@", "$($guile_match.Groups[1].Value)")
             $content = $content.replace("@GC_WIN_REPOS_DIR@", ".")
+            if ($content -match '@[A-Z_]+@') { throw "Unresolved Inno template token: $($matches[0])" }
             set-content -Path gnucash.iss -Value $content -Encoding utf8BOM
 
         - name: Package GnuCash
@@ -152,6 +185,13 @@ jobs:
             $final_name = "gnucash-$date-$vcs_rev.setup.exe"
             rename-item -path "gnucash-$Env:PACKAGE_VERSION.setup.exe" "$final_name"
             "FINAL_NAME=$final_name" | Add-Content $Env:GITHUB_ENV
+
+        - name: Verify manual GTK4 installer preflight
+          if: github.event_name == 'workflow_dispatch'
+          shell: pwsh
+          run: |
+            $ErrorActionPreference = 'Stop'
+            & .\inno_setup\verify-installer.ps1 -InstallerPath ".\$Env:FINAL_NAME"
 
         - name: Upload nightly build
           id: upload
