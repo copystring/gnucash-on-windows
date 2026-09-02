@@ -2,8 +2,8 @@ _realname=gwenhywfar
 pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgver=5.14.1
-rdmdir=630
-pkgrel=2
+_gwen_commit=b573ce81a709520eb95e9de3a0c680abe3d735e6
+pkgrel=3
 pkgdesc="AQBanking backends"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -17,19 +17,17 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-gcc"
 depends=(${MINGW_PACKAGE_PREFIX}-libgcrypt
          ${MINGW_PACKAGE_PREFIX}-gnutls
          ${MINGW_PACKAGE_PREFIX}-gtk4)
-source=(${url}/${rdmdir}/${_realname}-${pkgver}.tar.gz
+source=("${_realname}-${_gwen_commit}.tar.gz::https://github.com/copystring/gwenhywfar/archive/${_gwen_commit}.tar.gz"
         gwenhywfar-5.12-GWENHYWFAR-CB.patch
         gwenhywfar-5.12-windows.patch
-        gwenhywfar-5.14.1-gtk4.patch
         gwenhywfar-5.14.1-loader-lock.patch)
 
 prepare() {
-    cd ${srcdir}/${_realname}-${pkgver}/
+    cd ${srcdir}/${_realname}-${_gwen_commit}/
 
     # Put patch commands here
     patch -p1 -i ${srcdir}/gwenhywfar-5.12-GWENHYWFAR-CB.patch
     patch -p1 -i ${srcdir}/gwenhywfar-5.12-windows.patch
-    patch -p1 -i ${srcdir}/gwenhywfar-5.14.1-gtk4.patch
     patch -p1 -i ${srcdir}/gwenhywfar-5.14.1-loader-lock.patch
 
     autoreconf -fi
@@ -41,7 +39,7 @@ prepare() {
 build() {
     cd "${srcdir}/build-${MSYSTEM}"
     export lt_cv_deplibs_check_method="pass_all"
-    ${srcdir}/${_realname}-${pkgver}/configure \
+    ${srcdir}/${_realname}-${_gwen_commit}/configure \
     --prefix=${MINGW_PREFIX} \
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
@@ -62,8 +60,7 @@ package() {
     make -j1 DESTDIR="${pkgdir}" install
 }
 
-sha256sums=('8916feaa99cb954f963f2cba8dd2dffe57cacf7f284daf00eab071aad6fe2ab3'
+sha256sums=('1585111691cb9fe0b74424dea291398a6e227cb38ad0e1bdb8fcc964627f4d2d'
             'f01048d43f98e8f02d48ec694c1204f133a7fc064e3ca34f8fe13d178677c011'
             '7f3177c086531e46782bbad3ca045c06fd407851d273ba3954eb3e1ca48e403f'
-            'e134908f6554bb17f33c51be615dd5a248efc2d6f3edaad5738699144db123fd'
             '9fb6c5afcddefd9396bb45484951e3b76c13e57978f85b4f848dbf866e145122')
