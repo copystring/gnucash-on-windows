@@ -41,6 +41,14 @@ function Assert-AnyFile {
     }
 }
 
+function Assert-PathAbsent {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (Test-Path -LiteralPath $Path) {
+        throw "Unexpected GTK3 runtime payload: $Path"
+    }
+}
+
 function Get-Dumpbin {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (!(Test-Path -LiteralPath $vswhere)) {
@@ -168,6 +176,14 @@ try {
         "$install\share\locale\*\LC_MESSAGES\iso_4217.mo"
     )) {
         Assert-AnyFile -Path $required -Recurse
+    }
+    foreach ($obsolete in @(
+        "$install\bin\libgtk-3-0.dll",
+        "$install\lib\gtk-3.0",
+        "$install\share\gtk-3.0",
+        "$install\lib\girepository-1.0\Gtk-3.0.typelib"
+    )) {
+        Assert-PathAbsent -Path $obsolete
     }
 
     $environment_file = Join-Path $install 'etc\gnucash\environment'
