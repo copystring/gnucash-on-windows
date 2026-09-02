@@ -33,11 +33,23 @@ function Invoke-CheckedProcess {
 function Assert-AnyFile {
     param(
         [Parameter(Mandatory)][string]$Path,
+        [string]$Filter,
+        [string]$ExpectedPath = $Path,
         [switch]$Recurse
     )
 
-    if (!(Get-ChildItem -Path $Path -File -Recurse:$Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-        throw "Expected installer payload is missing: $Path"
+    $search = @{
+        Path = $Path
+        File = $true
+        Recurse = $Recurse
+        ErrorAction = 'SilentlyContinue'
+    }
+    if ($PSBoundParameters.ContainsKey('Filter')) {
+        $search.Filter = $Filter
+    }
+
+    if (!(Get-ChildItem @search | Select-Object -First 1)) {
+        throw "Expected installer payload is missing: $ExpectedPath"
     }
 }
 
@@ -147,7 +159,8 @@ $installer_succeeded = $false
 $primary_failure = $null
 try {
     Invoke-CheckedProcess -FilePath $installer -Description 'Silent installer' -ArgumentList @(
-        '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$install`""
+        '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+        '/COMPONENTS=main,translations,templates', "/DIR=`"$install`""
     )
     $installer_succeeded = $true
 
@@ -169,13 +182,14 @@ try {
         "$install\lib\gdk-pixbuf-2.0\2.10.0\loaders\*.dll",
         "$install\share\aqbanking\*",
         "$install\share\gwenhywfar\*",
-        "$install\share\gtk-4.0\*",
-        "$install\share\locale\*\LC_MESSAGES\aqbanking.mo",
-        "$install\share\locale\*\LC_MESSAGES\gwenhywfar.mo",
-        "$install\share\locale\*\LC_MESSAGES\gtk40.mo",
-        "$install\share\locale\*\LC_MESSAGES\iso_4217.mo"
+        "$install\share\gtk-4.0\*"
     )) {
         Assert-AnyFile -Path $required -Recurse
+    }
+    $locale_root = "$install\share\locale"
+    foreach ($catalog in @('aqbanking.mo', 'gwenhywfar.mo', 'gtk40.mo', 'iso_4217.mo')) {
+        Assert-AnyFile -Path $locale_root -Filter $catalog -Recurse `
+            -ExpectedPath "$locale_root\*\LC_MESSAGES\$catalog"
     }
     foreach ($obsolete in @(
         "$install\bin\libgtk-3-0.dll",
