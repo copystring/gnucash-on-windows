@@ -12,8 +12,13 @@ on:
                 required: true
                 default: future
                 type: string
+            dependency_overlay_name:
+                description: Optional Pacman repository name; requires dependency_overlay_url
+                required: false
+                default: ''
+                type: string
             dependency_overlay_url:
-                description: Optional Pacman repository URL to place before the GnuCash repository
+                description: Optional Pacman repository URL; requires dependency_overlay_name
                 required: false
                 default: ''
                 type: string
@@ -49,17 +54,26 @@ jobs:
         - name: Add our repo
           shell: msys2 {0}
           env:
+            DEPENDENCY_OVERLAY_NAME: ${{ inputs.dependency_overlay_name }}
             DEPENDENCY_OVERLAY_URL: ${{ inputs.dependency_overlay_url }}
           run: |
             set -euo pipefail
             sed -i "/^# SigLevel = Never/a [gnc-ucrt64]\nSigLevel = Optional TrustAll\nServer = https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/" /etc/pacman.conf
-            if [ -n "$DEPENDENCY_OVERLAY_URL" ]; then
+            if [[ -n "$DEPENDENCY_OVERLAY_NAME" || -n "$DEPENDENCY_OVERLAY_URL" ]]; then
+              if [[ -z "$DEPENDENCY_OVERLAY_NAME" || -z "$DEPENDENCY_OVERLAY_URL" ]]; then
+                echo 'dependency_overlay_name and dependency_overlay_url must be provided together.' >&2
+                exit 1
+              fi
+              if [[ ! "$DEPENDENCY_OVERLAY_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+                echo "Invalid dependency overlay name: $DEPENDENCY_OVERLAY_NAME" >&2
+                exit 1
+              fi
               dependency_overlay_url="${DEPENDENCY_OVERLAY_URL%/}/"
               if [[ ! "$dependency_overlay_url" =~ ^https://[A-Za-z0-9._/-]+/$ ]]; then
                 echo "Invalid dependency overlay URL: $DEPENDENCY_OVERLAY_URL" >&2
                 exit 1
               fi
-              sed -i "/^# SigLevel = Never/a [gnc-ucrt64-overlay]\nSigLevel = Optional TrustAll\nServer = $dependency_overlay_url" /etc/pacman.conf
+              sed -i "/^# SigLevel = Never/a [$DEPENDENCY_OVERLAY_NAME]\nSigLevel = Optional TrustAll\nServer = $dependency_overlay_url" /etc/pacman.conf
             fi
             sed -i "s/^# ParallelDownloads/ParallelDownloads/" /etc/pacman.conf
 
