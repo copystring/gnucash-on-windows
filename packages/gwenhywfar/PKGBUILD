@@ -2,8 +2,8 @@ _realname=gwenhywfar
 pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgver=5.14.1
-_gwen_commit=b573ce81a709520eb95e9de3a0c680abe3d735e6
-pkgrel=3
+_gwen_commit=b0f2d06a34c7534b635c0fc1e2192760fa424fc5
+pkgrel=4
 pkgdesc="AQBanking backends"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -60,7 +60,7 @@ package() {
     make -j1 DESTDIR="${pkgdir}" install
 }
 
-sha256sums=('1585111691cb9fe0b74424dea291398a6e227cb38ad0e1bdb8fcc964627f4d2d'
+sha256sums=('cf6cb30d3c43255f3d284a57f31505b455e8414bfc1925f74a757d76b4b4e672'
             'f01048d43f98e8f02d48ec694c1204f133a7fc064e3ca34f8fe13d178677c011'
             '7f3177c086531e46782bbad3ca045c06fd407851d273ba3954eb3e1ca48e403f'
             '9fb6c5afcddefd9396bb45484951e3b76c13e57978f85b4f848dbf866e145122')
