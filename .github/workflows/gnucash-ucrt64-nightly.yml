@@ -23,6 +23,27 @@ on:
                 default: ''
                 type: string
     workflow_call:
+        inputs:
+            gnucash_repository:
+                description: GnuCash repository to build
+                required: false
+                default: gnucash/gnucash
+                type: string
+            gnucash_ref:
+                description: GnuCash branch, tag, or commit to build
+                required: false
+                default: future
+                type: string
+            dependency_overlay_name:
+                description: Optional Pacman repository name; requires dependency_overlay_url
+                required: false
+                default: ''
+                type: string
+            dependency_overlay_url:
+                description: Optional Pacman repository URL; requires dependency_overlay_name
+                required: false
+                default: ''
+                type: string
         outputs:
             artifact-url:
                 description: Download URL of the uploaded nightly installer artifact
@@ -201,7 +222,7 @@ jobs:
             "FINAL_NAME=$final_name" | Add-Content $Env:GITHUB_ENV
 
         - name: Verify manual GTK4 installer preflight
-          if: github.event_name == 'workflow_dispatch'
+          if: github.event_name == 'workflow_dispatch' && inputs.dependency_overlay_name != ''
           shell: pwsh
           run: |
             $ErrorActionPreference = 'Stop'
