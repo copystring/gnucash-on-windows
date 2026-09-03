@@ -17,6 +17,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+function Assert-ElevatedSession {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Installer preflight must be run from an elevated PowerShell session because the installer writes machine-wide registry keys.'
+    }
+}
+
 function Invoke-CheckedProcess {
     param(
         [Parameter(Mandatory)][string]$FilePath,
@@ -58,6 +66,19 @@ function Assert-PathAbsent {
 
     if (Test-Path -LiteralPath $Path) {
         throw "Unexpected GTK3 runtime payload: $Path"
+    }
+}
+
+function Assert-NativeWindowsDecorations {
+    param(
+        [Parameter(Mandatory)][string]$Environment,
+        [Parameter(Mandatory)][string]$EnvironmentFile
+    )
+
+    $gtk_csd_lines = @([regex]::Matches($Environment, '(?m)^GTK_CSD=[^\r\n]*') |
+        ForEach-Object Value)
+    if ($gtk_csd_lines.Count -ne 1 -or $gtk_csd_lines[0] -cne 'GTK_CSD=0') {
+        throw "Expected exactly one GTK_CSD=0 entry in ${EnvironmentFile}; found: $($gtk_csd_lines -join ', ')"
     }
 }
 
@@ -146,6 +167,7 @@ function Test-PeImportClosure {
     }
 }
 
+Assert-ElevatedSession
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 if ([string]::IsNullOrWhiteSpace($InstallPath)) {
     $InstallPath = Join-Path ([System.IO.Path]::GetTempPath()) "gnucash-installer-preflight-$([guid]::NewGuid().ToString('N'))"
@@ -211,6 +233,7 @@ try {
     if ($environment -match '(?i)(?:[a-z]:)?[\\/]+msys(?:2|64)[\\/]') {
         throw "Installed environment still contains an MSYS2 path: $environment_file"
     }
+    Assert-NativeWindowsDecorations -Environment $environment -EnvironmentFile $environment_file
 
     Test-PeImportClosure -Root $install -Dumpbin (Get-Dumpbin) -SystemImports (Get-SystemImports)
 
