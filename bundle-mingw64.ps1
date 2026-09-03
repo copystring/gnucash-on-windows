@@ -159,12 +159,13 @@ bash-command("$schema_compiler $target_schema_unix")
 $source_locale_dir = "$mingw_prefix\share\locale"
 $inst_locale_dir = "$prefix\share\locale"
 foreach ($msgcat in "gtk40.mo", "iso_4217.mo", "aqbanking.mo", "gwenhywfar.mo") {
-    foreach ($dir in get-childitem -Directory $source_locale_dir) {
-	$source_path = "$source_locale_dir\$dir\LC_MESSAGES"
-	$inst_path = "$inst_locale_dir\$dir\LC_MESSAGES"
-	if ((test-path $source_path) -and (test-path "$source_path\$msgcat") -and (test-path $inst_path)) {
-	    copy-item "$source_path\$msgcat" -Destination $inst_path -recurse
-	}
+    foreach ($dir in Get-ChildItem -LiteralPath $source_locale_dir -Directory) {
+        $source_path = Join-Path $dir.FullName "LC_MESSAGES\$msgcat"
+        if (Test-Path -LiteralPath $source_path -PathType Leaf) {
+            $inst_path = Join-Path $inst_locale_dir "$($dir.Name)\LC_MESSAGES"
+            New-Item -ItemType Directory -Path $inst_path -Force | Out-Null
+            Copy-Item -LiteralPath $source_path -Destination $inst_path
+        }
     }
 }
 # We also need to consolidate the GSettings schemas and compile them.
