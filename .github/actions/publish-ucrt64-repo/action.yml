@@ -69,15 +69,12 @@ runs:
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
-        # Fails harmlessly on the very first-ever publish, before the
-        # release or these particular files exist.
-        gh release download ${{ inputs.release-tag }} `
-          -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} `
-          --pattern 'gnc-ucrt64.db.tar.zst' `
-          --pattern 'gnc-ucrt64.files.tar.zst' `
-          --dir '${{ inputs.package-dir }}' `
-          --clobber
-        exit 0
+        & "$env:GITHUB_ACTION_PATH/fetch-ucrt64-repo-assets.ps1" `
+          -PackageDir '${{ inputs.package-dir }}' `
+          -Owner '${{ inputs.deps-repo-owner }}' `
+          -Repository '${{ inputs.deps-repo-name }}' `
+          -ReleaseTag '${{ inputs.release-tag }}'
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     - name: Merge new package(s) into the repo database
       shell: msys2 {0}
@@ -110,8 +107,7 @@ runs:
           exit 1
         }
 
-        gh release view ${{ inputs.release-tag }} -R ${{ inputs.deps-repo-owner }}/${{ inputs.deps-repo-name }} *>$null
-        if ($LASTEXITCODE -ne 0) {
+        if ($env:UCRT64_RELEASE_NEEDS_CREATE -eq 'true') {
           # Create it with no assets yet, and publish it immediately, so its
           # tag is fully materialized before anything is ever uploaded.
           # --target is pinned to deps-repo's actual default branch rather
