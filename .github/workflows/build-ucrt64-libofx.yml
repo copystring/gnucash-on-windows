@@ -24,7 +24,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: gnc-ucrt64-repo
+  # Publishing requires a shared lock; artifact-only fork builds are independent.
+  group: ${{ vars.DEPS_REPO_APP_CLIENT_ID != '' && 'gnc-ucrt64-repo' || format('ucrt64-packages-{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: future
+          ref: ${{ github.event_name == 'schedule' && 'future' || github.sha }}
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -75,7 +76,15 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Upload built packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ucrt64-libofx-packages
+          path: repo-out/*.pkg.tar.zst
+          if-no-files-found: error
+
       - name: Publish to rolling ucrt64 repo
+        if: vars.DEPS_REPO_APP_CLIENT_ID != ''
         uses: ./.github/actions/publish-ucrt64-repo
         with:
           package-dir: repo-out
