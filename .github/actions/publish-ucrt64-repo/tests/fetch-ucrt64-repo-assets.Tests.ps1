@@ -87,10 +87,10 @@ try {
         $env:GITHUB_ENV = Join-Path $caseRoot 'github.env'
 
         $ErrorActionPreference = 'Continue'
-        & pwsh -NoProfile -File $helper -PackageDir $packageDir -Owner 'owner' -Repository 'deps' -ReleaseTag 'rolling' -GhCommand $mockGhCommand
+        $helperOutput = & pwsh -NoProfile -File $helper -PackageDir $packageDir -Owner 'owner' -Repository 'deps' -ReleaseTag 'rolling' -GhCommand $mockGhCommand 2>&1
         $helperExit = $LASTEXITCODE
         $ErrorActionPreference = 'Stop'
-        Assert-True ($helperExit -eq $case.ExpectedExit) "$($case.Name): expected helper exit $($case.ExpectedExit), got $helperExit"
+        Assert-True ($helperExit -eq $case.ExpectedExit) "$($case.Name): expected helper exit $($case.ExpectedExit), got ${helperExit}: $helperOutput"
         $flag = if (Test-Path -LiteralPath $env:GITHUB_ENV) { Get-Content -LiteralPath $env:GITHUB_ENV -Raw } else { $null }
         if ($null -eq $case.ExpectedCreate) {
             Assert-True ($null -eq $flag) "$($case.Name): unexpected release creation flag"
@@ -105,6 +105,7 @@ try {
             Assert-True (Test-Path -LiteralPath (Join-Path $packageDir 'gnc-ucrt64.db.tar.zst') -PathType Leaf) 'existing-release: database asset missing'
             Assert-True (Test-Path -LiteralPath (Join-Path $packageDir 'gnc-ucrt64.files.tar.zst') -PathType Leaf) 'existing-release: files asset missing'
         }
+        Write-Host "$($case.Name): passed"
     }
     Write-Host 'fetch-ucrt64-repo-assets mock tests passed.'
 } finally {
@@ -115,3 +116,6 @@ try {
     }
     Remove-Item -LiteralPath $cleanupTarget -Recurse -Force
 }
+
+# A deliberately failing child process must not become the caller's exit code.
+exit 0
