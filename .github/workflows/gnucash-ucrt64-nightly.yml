@@ -12,6 +12,16 @@ on:
                 required: true
                 default: future
                 type: string
+            docs_repository:
+                description: GnuCash documentation repository to build
+                required: false
+                default: gnucash/gnucash-docs
+                type: string
+            docs_ref:
+                description: Documentation branch, tag, or commit; empty uses its default branch
+                required: false
+                default: ''
+                type: string
             dependency_overlay_name:
                 description: Optional Pacman repository name; requires dependency_overlay_url
                 required: false
@@ -33,6 +43,16 @@ on:
                 description: GnuCash branch, tag, or commit to build
                 required: false
                 default: future
+                type: string
+            docs_repository:
+                description: GnuCash documentation repository to build
+                required: false
+                default: gnucash/gnucash-docs
+                type: string
+            docs_ref:
+                description: Documentation branch, tag, or commit; empty uses its default branch
+                required: false
+                default: ''
                 type: string
             dependency_overlay_name:
                 description: Optional Pacman repository name; requires dependency_overlay_url
@@ -125,7 +145,8 @@ jobs:
         - name: Checkout GnuCash Docs
           uses: actions/checkout@v7
           with:
-            repository: gnucash/gnucash-docs
+            repository: ${{ inputs.docs_repository || 'gnucash/gnucash-docs' }}
+            ref: ${{ inputs.docs_ref || '' }}
             path: gnucash-docs-git
 
         - name: Configure GnuCash
