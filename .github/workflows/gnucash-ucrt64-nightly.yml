@@ -221,12 +221,12 @@ jobs:
             rename-item -path "gnucash-$Env:PACKAGE_VERSION.setup.exe" "$final_name"
             "FINAL_NAME=$final_name" | Add-Content $Env:GITHUB_ENV
 
-        - name: Verify manual GTK4 installer preflight
-          if: github.event_name == 'workflow_dispatch' && inputs.dependency_overlay_name != ''
+        - name: Verify GTK4 installer preflight
           shell: pwsh
           run: |
             $ErrorActionPreference = 'Stop'
             & .\inno_setup\verify-installer.ps1 -InstallerPath ".\$Env:FINAL_NAME"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         - name: Upload nightly build
           id: upload
