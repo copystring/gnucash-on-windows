@@ -42,7 +42,7 @@ Optional. The path to the GnuCash build directory, default: c:\gcdev64\gnucash-b
 
 .PARAMETER prefix
 
-Optional. The value of CMAKE_INSTALL_PREFIX used when configuring the GnuCash and GnuCash Documentation builds. It's where this script expects to find the installed GnuCash and GnuCash-Docs files and is where it will write the installer program. Default: c:\gcdev64\gnucash-inst
+Optional. The value of CMAKE_INSTALL_PREFIX used when configuring the GnuCash and GnuCash Documentation builds. It's where this script expects to find the installed GnuCash and GnuCash-Docs files. The installer is written to the directory containing this script. Default: c:\gcdev64\inst
 
 .PARAMETER git_build
 

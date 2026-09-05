@@ -186,11 +186,13 @@ All parameters are optional and have the defaults shown below.
 * **-gnc_build_dir** The path to the GnuCash build directory, used to
   retrieve version information. Default is c:\gcdev64\gnucash-build
 * **-prefix**: The path provided to CMAKE_INSTALL_PREFIX when
-  configuring GnuCash and GnuCash-Docs. The installer program will be
-  written here. Default: `c:\gcdev64\inst`.
+  configuring GnuCash and GnuCash-Docs. This is the input directory for
+  the installed files. Default: `c:\gcdev64\inst`.
 * **-git_build**: `$true` if GnuCash was built from Git,
   `$false` otherwise. Only use `$false` for release
   builds. Default: `$true`.
+
+The installer is written to the directory containing `bundle-mingw64.ps1`.
 
 Note that we need to copy the message catalogs we need out of
 `$mingw_prefix\share\locale` to the corresponding directories in
