@@ -60,7 +60,6 @@ Param(
 
 $script_dir = Split-Path $script:MyInvocation.MyCommand.Path
 $target_dir = $script_dir
-$msys2_dir = Split-Path $mingw_prefix -Parent
 
 $progressPreference = 'silentlyContinue'
 $ErrorActionPreference = 'Stop'
@@ -99,23 +98,6 @@ function guile-version([string]$prefix) {
     return $version_match.Groups[1].Value
 }
 
-function bash-command() {
-    param ([string]$command = "")
-    $bash = "$msys2_dir\usr\bin\bash.exe"
-    if (!(test-path -LiteralPath $bash)) {
-        throw "Shell program not found: $bash"
-    }
-    #write-host "Running bash command ""$command"""
-    $process = Start-Process -FilePath $bash -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -PassThru -Wait
-    if ($process.ExitCode -ne 0) {
-        throw "Bash command failed with exit code $($process.ExitCode): $command"
-    }
-}
-
-function make-unixpath([string]$path) {
-    $path -replace  "^([A-Z]):", '/$1' -replace "\\", '/'
-}
-
 if ($git_build) {
   $gnucash = "gnucash-git"
 }
@@ -146,14 +128,6 @@ else {
   $final_file = "$target_dir\gnucash-$package_version.setup.exe"
 }
 
-$schema_dir = "share\glib-2.0\schemas"
-$target_schema_dir = "$prefix\$schema_dir"
-copy-item $mingw_prefix\$schema_dir\org.gtk.gtk4.Settings.* $target_schema_dir
-$target_schema_unix = make-unixpath -path $target_schema_dir
-$schema_compiler = make-unixpath -path "$mingw_prefix\bin\glib-compile-schemas"
-bash-command("$schema_compiler $target_schema_unix")
-
-
 # Inno-setup isn't able to easily pick out particular message catalogs from $mingw_prefix/share/locale, so copy the ones we want to $prefix\share\locale.
 
 $source_locale_dir = "$mingw_prefix\share\locale"
@@ -168,9 +142,12 @@ foreach ($msgcat in "gtk40.mo", "iso_4217.mo", "aqbanking.mo", "gwenhywfar.mo") 
         }
     }
 }
-# We also need to consolidate the GSettings schemas and compile them.
-copy-item "$mingw_prefix\share\glib-2.0\schemas\*.gschema.xml" "$prefix\share\glib-2.0\schemas"
-bash-command("$schema_compiler $target_schema_unix")
+# Consolidate every GSettings compiler input and reject incomplete schemas.
+& "$script_dir\inno_setup\prepare-gsettings-schemas.ps1" `
+    -SourceDirectory "$mingw_prefix\share\glib-2.0\schemas" `
+    -TargetDirectory "$prefix\share\glib-2.0\schemas" `
+    -CompilerPath "$mingw_prefix\bin\glib-compile-schemas.exe" `
+    -GSettingsPath "$mingw_prefix\bin\gsettings.exe"
 
 # configure gnucash.iss
 

@@ -4,10 +4,18 @@ on:
   push:
     paths:
       - '.github/actions/publish-ucrt64-repo/**'
+      - 'bundle-mingw64.ps1'
+      - 'inno_setup/**'
+      - 'setup-mingw64.sh'
+      - '.github/workflows/gnucash-ucrt64-nightly.yml'
       - '.github/workflows/package-repository-tests.yml'
   pull_request:
     paths:
       - '.github/actions/publish-ucrt64-repo/**'
+      - 'bundle-mingw64.ps1'
+      - 'inno_setup/**'
+      - 'setup-mingw64.sh'
+      - '.github/workflows/gnucash-ucrt64-nightly.yml'
       - '.github/workflows/package-repository-tests.yml'
   workflow_dispatch:
 
@@ -24,4 +32,9 @@ jobs:
         shell: pwsh
         run: |
           & ./.github/actions/publish-ucrt64-repo/tests/fetch-ucrt64-repo-assets.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test GSettings schema preparation
+        shell: pwsh
+        run: |
+          & ./inno_setup/tests/GSettingsSchemas.Tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

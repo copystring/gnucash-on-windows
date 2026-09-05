@@ -50,7 +50,7 @@ function install-deps()
 {
     mingw_prefix="mingw-w64-$1"
     toolchain="binutils cmake crt gcc gdb headers libmangle libtool libwinpthread ninja tools winpthreads winstorecompat"
-    deps="appstream-glib boost docbook-xsl gettext-tools gtest harfbuzz-icu icu iso-codes pdcurses libsecret webview2-loader zlib"
+    deps="appstream-glib boost docbook-xsl gettext-tools gsettings-desktop-schemas gtest gtk4 harfbuzz-icu icu iso-codes pdcurses libsecret webview2-loader zlib"
     our_repo_deps="aqbanking guile3 libdbi-drivers libofx swig"
 
     install-group $mingw_prefix "$toolchain"

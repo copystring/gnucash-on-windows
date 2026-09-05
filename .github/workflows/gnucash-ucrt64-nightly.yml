@@ -116,6 +116,12 @@ jobs:
             ref: ${{ inputs.gnucash_ref || 'future' }}
             path: gnucash-git
 
+        - name: Test GSettings schema preparation
+          shell: pwsh
+          run: |
+            & .\inno_setup\tests\GSettingsSchemas.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
         - name: Checkout GnuCash Docs
           uses: actions/checkout@v7
           with:
@@ -154,7 +160,7 @@ jobs:
             ninja
             ninja install
 
-        - name: Copy message catalogs and gschemas
+        - name: Copy message catalogs
           shell: msys2 {0}
           run: |
             for dir in "$MSYSTEM_PREFIX"/share/locale/* ; do
@@ -167,8 +173,17 @@ jobs:
                 fi
               done
             done
-            cp "$MSYSTEM_PREFIX"/share/glib-2.0/schemas/*.gschema.xml "$RUNNER_TEMP/inst/share/glib-2.0/schemas"
-            $MSYSTEM_PREFIX/bin/glib-compile-schemas "$RUNNER_TEMP/inst/share/glib-2.0/schemas"
+
+        - name: Prepare GSettings schemas
+          shell: pwsh
+          run: |
+            $msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
+            & .\inno_setup\prepare-gsettings-schemas.ps1 `
+                -SourceDirectory "$msys_prefix\share\glib-2.0\schemas" `
+                -TargetDirectory "$Env:RUNNER_TEMP\inst\share\glib-2.0\schemas" `
+                -CompilerPath "$msys_prefix\bin\glib-compile-schemas.exe" `
+                -GSettingsPath "$msys_prefix\bin\gsettings.exe"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         - name: Configure gnucash.iss
           shell: pwsh
@@ -225,7 +240,10 @@ jobs:
           shell: pwsh
           run: |
             $ErrorActionPreference = 'Stop'
-            & .\inno_setup\verify-installer.ps1 -InstallerPath ".\$Env:FINAL_NAME"
+            $msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
+            & .\inno_setup\verify-installer.ps1 `
+                -InstallerPath ".\$Env:FINAL_NAME" `
+                -GSettingsPath "$msys_prefix\bin\gsettings.exe"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         - name: Upload nightly build

@@ -10,12 +10,22 @@
 param(
     [Parameter(Mandatory)]
     [string]$InstallerPath,
-    [string]$InstallPath
+    [string]$InstallPath,
+    [string]$GSettingsPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+Import-Module (Join-Path $PSScriptRoot 'GSettingsSchemas.psm1') -Force
+
+if ([string]::IsNullOrWhiteSpace($GSettingsPath)) {
+    $gsettings_command = Get-Command 'gsettings.exe' -ErrorAction SilentlyContinue
+    if (!$gsettings_command) {
+        throw 'gsettings.exe was not found on PATH; provide -GSettingsPath for compiled schema verification.'
+    }
+    $GSettingsPath = $gsettings_command.Source
+}
 
 function Assert-ElevatedSession {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -194,6 +204,9 @@ try {
     )) {
         Assert-AnyFile -Path $required
     }
+    Assert-GSettingsSchemaCache `
+        -Directory "$install\share\glib-2.0\schemas" `
+        -GSettingsPath $GSettingsPath
     foreach ($required in @(
         "$install\bin\libaqbanking-*.dll",
         "$install\bin\libgwenhywfar-*.dll",
