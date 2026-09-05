@@ -2,7 +2,7 @@ _realname=OpenSP
 pkgbase="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgname=${pkgbase}
 pkgver=1.5.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Atomic Operations Library"
 arch=('any')
 mingw_arch=('ucrt64' 'clang64' 'clangarm64')
@@ -33,7 +33,7 @@ build() {
         export CXXFLAGS="${CXXFLAGS} -Wno-nontrivial-memcall"
     fi
     ${srcdir}/${_realname}-${pkgver}/configure \
-    --prefix=${GNC_PREFIX} \
+    --prefix=${MINGW_PREFIX} \
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
     --disable-static \
