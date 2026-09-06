@@ -141,6 +141,8 @@ jobs:
           run: |
             & .\inno_setup\tests\GSettingsSchemas.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\inno_setup\tests\Gtk3Payload.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         - name: Checkout GnuCash Docs
           uses: actions/checkout@v7

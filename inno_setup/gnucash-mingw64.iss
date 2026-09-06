@@ -241,8 +241,12 @@ Source: "@MINGW_DIR@\share\chipcard\*"; DestDir: "{app}\share\chipcard"; Flags: 
 Source: "@MINGW_DIR@\share\guile\*"; DestDir: "{app}\share\guile"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\libofx\*"; DestDir: "{app}\share\libofx"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\OpenSP\*"; DestDir: "{app}\share\OpenSP"; Flags: recursesubdirs; Components: main
-Source: "@MINGW_DIR@\share\icons\*"; DestDir: "{app}\share\icons"; Flags: recursesubdirs; Components: main
-Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Flags: recursesubdirs; Components: main
+; Keep the common icon themes and GTK4's Demo4/WidgetFactory4 assets, but not
+; the GTK3 demo applications that are co-installed by the GTK3 package.
+Source: "@MINGW_DIR@\share\icons\*"; DestDir: "{app}\share\icons"; Excludes: "gtk3-demo*,gtk3-widget-factory*"; Flags: recursesubdirs; Components: main
+; Theme key bindings are version-specific. Excluding the subtree rather than
+; today's Default and Emacs instances keeps future GTK3 theme payload out too.
+Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Excludes: "gtk-3.0\*"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\gtk-4.0\*"; DestDir: "{app}\share\gtk-4.0"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\iso-codes\*"; DestDir: "{app}\share\xml\iso-codes"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\fontconfig\*"; DestDir: "{app}\share\xml\fontconfig"; Flags: recursesubdirs; Components: main

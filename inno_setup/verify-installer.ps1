@@ -18,6 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'GSettingsSchemas.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Gtk3Payload.psm1') -Force
 
 if ([string]::IsNullOrWhiteSpace($GSettingsPath)) {
     $gsettings_command = Get-Command 'gsettings.exe' -ErrorAction SilentlyContinue
@@ -68,14 +69,6 @@ function Assert-AnyFile {
 
     if (!(Get-ChildItem @search | Select-Object -First 1)) {
         throw "Expected installer payload is missing: $ExpectedPath"
-    }
-}
-
-function Assert-PathAbsent {
-    param([Parameter(Mandatory)][string]$Path)
-
-    if (Test-Path -LiteralPath $Path) {
-        throw "Unexpected GTK3 runtime payload: $Path"
     }
 }
 
@@ -226,14 +219,7 @@ try {
         Assert-AnyFile -Path $locale_root -Filter $catalog -Recurse `
             -ExpectedPath "$locale_root\*\LC_MESSAGES\$catalog"
     }
-    foreach ($obsolete in @(
-        "$install\bin\libgtk-3-0.dll",
-        "$install\lib\gtk-3.0",
-        "$install\share\gtk-3.0",
-        "$install\lib\girepository-1.0\Gtk-3.0.typelib"
-    )) {
-        Assert-PathAbsent -Path $obsolete
-    }
+    Assert-NoGtk3Payload -Root $install
 
     $environment_file = Join-Path $install 'etc\gnucash\environment'
     $environment = Get-Content -LiteralPath $environment_file -Raw
