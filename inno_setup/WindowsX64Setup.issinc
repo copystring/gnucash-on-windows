@@ -1,0 +1,5 @@
+; The distributed UCRT64 payload is an AMD64 application. Keep these settings in
+; one include so production and compiled installer fixtures exercise the same
+; Inno Setup 6 architecture contract.
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible

@@ -1,0 +1,87 @@
+#ifndef PreviousInstallUninstallKey
+  #define PreviousInstallUninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\GnuCash_is1"
+#endif
+#ifndef PreviousInstallVersionKey
+  #define PreviousInstallVersionKey "Software\GnuCash\Version"
+#endif
+
+{ Read a previous installation from one explicit registry view. }
+function TryGetPrevInstallInfo(RootKey: Integer): Boolean;
+begin
+  Result := RegQueryStringValue(RootKey,
+    '{#PreviousInstallUninstallKey}', 'UninstallString', PrevUninstallString)
+    and (PrevUninstallString <> '');
+  if Result then begin
+    RegQueryStringValue(RootKey,
+      '{#PreviousInstallUninstallKey}', 'DisplayName', PrevAppName);
+    RegQueryDwordValue(RootKey,
+      '{#PreviousInstallVersionKey}', 'VersionMajor', PrevVersionMajor);
+    RegQueryDwordValue(RootKey,
+      '{#PreviousInstallVersionKey}', 'VersionMinor', PrevVersionMinor);
+    RegQueryDwordValue(RootKey,
+      '{#PreviousInstallVersionKey}', 'VersionMicro', PrevVersionMicro);
+  end;
+end;
+
+{ Search both registry views so the x64 package still finds older x86 installs. }
+procedure GetPrevInstallInfo();
+begin
+  PrevAppName := '';
+  PrevUninstallString := '';
+  PrevVersionMajor := 0;
+  PrevVersionMinor := 0;
+  PrevVersionMicro := 0;
+
+  if TryGetPrevInstallInfo(HKLM64) then
+    exit;
+  if TryGetPrevInstallInfo(HKLM32) then
+    exit;
+  { HKCU is not redirected, so one lookup covers both process architectures. }
+  TryGetPrevInstallInfo(HKCU);
+end;
+
+{ Check if there is another GnuCash currently installed. }
+procedure CheckUninstallRequired();
+begin
+  UninstallRequired := True;
+  GetPrevInstallInfo;
+
+  if PrevUninstallString = '' then
+    UninstallRequired := False;
+end;
+
+{ Uninstall the previous installation and verify that its registration is gone. }
+function UnInstallOldVersion(): Integer;
+var
+  UninstallExecutable: String;
+  ResultCode: Integer;
+begin
+  { Return 1 for no command, 2 for failure, and 3 for verified success. }
+  Result := 0;
+  if PrevUninstallString <> '' then begin
+    UninstallExecutable := RemoveQuotes(PrevUninstallString);
+    if Exec(UninstallExecutable, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '',
+        SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then begin
+      GetPrevInstallInfo;
+      if PrevUninstallString = '' then
+        Result := 3
+      else
+        Result := 2;
+    end
+    else
+      Result := 2;
+  end
+  else
+    Result := 1;
+end;
+
+{ Never lay down the new payload unless the previous uninstall is verified. }
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then begin
+    if UninstallRequired then begin
+      if UnInstallOldVersion() <> 3 then
+        RaiseException('The previous GnuCash installation could not be removed. Setup cannot continue.');
+    end;
+  end;
+end;

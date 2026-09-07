@@ -16,6 +16,8 @@ AppSupportURL=http://www.gnucash.org
 AppUpdatesURL=http://www.gnucash.org
 VersionInfoVersion=@PACKAGE_VERSION@
 DefaultDirName={autopf}\@PACKAGE@
+UsePreviousAppDir=yes
+#include "@GC_WIN_REPOS_DIR@\inno_setup\WindowsX64Setup.issinc"
 DefaultGroupName=GnuCash
 InfoBeforeFile=@INST_DIR@\share\doc\@PACKAGE@\LICENSE
 Compression=lzma
@@ -25,7 +27,6 @@ OutputDir=.
 OutputBaseFilename=@PACKAGE@-@PACKAGE_VERSION@.setup
 UninstallFilesDir={app}\uninstall\@PACKAGE@
 InfoAfterFile=@GC_WIN_REPOS_DIR@\inno_setup\README.win32-bin.txt
-; SetupArchitecture=x64 ;; Inno-setup 7.0 and later. Github gets 6.7.
 SetupIconFile=@INST_DIR@\share\@PACKAGE@\pixmaps\gnucash-icon.ico
 WizardSmallImageFile=@INST_DIR@\share\@PACKAGE@\pixmaps\gnucash-icon-48x48.bmp
 
@@ -315,73 +316,7 @@ var
 // the version the user has selected.
 // ----------------------------------------------------------------
 
-{ Lookup the registry information on a previous installation }
-procedure GetPrevInstallInfo();
-var
-  sUnInstPath, sAppVersionPath: String;
-  rootKey : Integer;
-begin
-  sAppVersionPath := 'Software\GnuCash\Version';
-  sUnInstPath := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\GnuCash_is1';
-
-  PrevAppName := '';
-  PrevUninstallString := '';
-  PrevVersionMajor := 0;
-  PrevVersionMinor := 0;
-  PrevVersionMicro := 0;
-
-  if RegKeyExists(HKLM, sUnInstPath) then
-    rootKey := HKLM
-  else
-    rootKey := HKCU;
-
-  RegQueryStringValue(rootKey, sUnInstPath, 'UninstallString', PrevUninstallString);
-  RegQueryStringValue(rootKey, sUnInstPath, 'DisplayName', PrevAppName);
-  RegQueryDwordValue(rootKey, sAppVersionPath, 'VersionMajor', PrevVersionMajor);
-  RegQueryDwordValue(rootKey, sAppVersionPath, 'VersionMinor', PrevVersionMinor);
-  RegQueryDwordValue(rootKey, sAppVersionPath, 'VersionMicro', PrevVersionMicro);
-end;
-
-{ Check if there is another GnuCash currently installed                  }
-{ If so, the user will be prompted if it can be uninstalled first.       }
-{ If the user doesn't allow uninstall, the installation will be aborted. }
-procedure CheckUninstallRequired();
-begin
-  UninstallRequired := True;
-  GetPrevInstallInfo;
-
-  if (PrevUninstallString = '') then
-    UninstallRequired := False
-// We used to check on major-minor versions to determine the uninstall requirement,
-// but this is not always sufficient. So the following code won't be used until
-// refined.
-//  else if (PrevVersionMajor = @GNUCASH_MAJOR_VERSION@) and (PrevVersionMinor = @GNUCASH_MINOR_VERSION@) then
-//    UninstallRequired := False;
-end;
-
-{ Uninstall the current installation }
-function UnInstallOldVersion(): Integer;
-var
-  sUnInstallString: String;
-  iResultCode: Integer;
-begin
-// Return Values:
-// 1 - uninstall string is empty
-// 2 - error executing the UnInstallString
-// 3 - successfully executed the UnInstallString
-
-  // default return value
-  Result := 0;
-
-  if PrevUninstallString <> '' then begin
-    sUnInstallString := RemoveQuotes(PrevUninstallString);
-    if Exec(sUnInstallString, '/SILENT /NORESTART /SUPPRESSMSGBOXES','', SW_HIDE, ewWaitUntilTerminated, iResultCode) then
-      Result := 3
-    else
-      Result := 2;
-  end else
-    Result := 1;
-end;
+#include "@GC_WIN_REPOS_DIR@\inno_setup\PreviousInstall.issinc"
 
 function GetPrevAppName(Param: String): String;
 begin
@@ -404,14 +339,6 @@ begin
   Result := False
   if (PageID = PrevInstDetectedPage.ID) and (not UninstallRequired) then
     Result := True;
-end;
-
-{ If a previous (incompatible) installation is present start the installation }
-{ process with deleting this old installation }
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if (CurStep=ssInstall) and (UninstallRequired) then
-    UnInstallOldVersion();
 end;
 
 // ------------------------------------------------------------

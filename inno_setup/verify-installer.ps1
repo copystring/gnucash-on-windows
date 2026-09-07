@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'GSettingsSchemas.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Gtk3Payload.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'InstallerArchitecture.psm1') -Force
 
 if ([string]::IsNullOrWhiteSpace($GSettingsPath)) {
     $gsettings_command = Get-Command 'gsettings.exe' -ErrorAction SilentlyContinue
@@ -172,8 +173,11 @@ function Test-PeImportClosure {
 
 Assert-ElevatedSession
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
+$product_key = 'GnuCash_is1'
+Assert-InnoProductNotRegistered -ProductKey $product_key
+$using_default_path = [string]::IsNullOrWhiteSpace($InstallPath)
 if ([string]::IsNullOrWhiteSpace($InstallPath)) {
-    $InstallPath = Join-Path ([System.IO.Path]::GetTempPath()) "gnucash-installer-preflight-$([guid]::NewGuid().ToString('N'))"
+    $InstallPath = Join-Path (Get-ProgramFiles64) 'gnucash'
 }
 $install = [System.IO.Path]::GetFullPath($InstallPath)
 if (Test-Path -LiteralPath $install) {
@@ -183,11 +187,21 @@ if (Test-Path -LiteralPath $install) {
 $installer_succeeded = $false
 $primary_failure = $null
 try {
-    Invoke-CheckedProcess -FilePath $installer -Description 'Silent installer' -ArgumentList @(
+    $installer_arguments = @(
         '/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-        '/COMPONENTS=main,translations,templates', "/DIR=`"$install`""
+        '/COMPONENTS=main,translations,templates'
     )
+    if (!$using_default_path) {
+        $installer_arguments += "/DIR=`"$install`""
+    }
+    Invoke-CheckedProcess -FilePath $installer -Description 'Silent installer' `
+        -ArgumentList $installer_arguments
     $installer_succeeded = $true
+
+    Assert-InnoProductRegistration -ProductKey $product_key -ExpectedInstallLocation $install
+    Assert-GnuCashRegistryView -ExpectedInstallLocation $install
+    Write-Host "Installer path contract passed: $install"
+    Write-Host 'Installer registry contract passed: HKLM Registry64 only (no HKLM Registry32 product key)'
 
     foreach ($required in @(
         "$install\bin\gnucash.exe",
@@ -234,6 +248,10 @@ try {
     }
     Assert-NativeWindowsDecorations -Environment $environment -EnvironmentFile $environment_file
 
+    # The Inno Setup bootstrapper and uninstaller may legally remain x86. The
+    # shipped GnuCash application/runtime contract under bin and lib is AMD64.
+    $pe_summary = Assert-Amd64ApplicationPayload -Root $install
+    Write-Host "AMD64 application/runtime contract passed: $($pe_summary.FilesChecked) PE files; main $($pe_summary.MainExecutable)"
     Test-PeImportClosure -Root $install -Dumpbin (Get-Dumpbin) -SystemImports (Get-SystemImports)
 
     $old_path = $env:PATH
@@ -275,6 +293,7 @@ finally {
                 if (Test-Path -LiteralPath $install) {
                     throw "Silent uninstaller left the installation directory behind: $install"
                 }
+                Assert-InnoProductNotRegistered -ProductKey $product_key
             }
             catch {
                 if ($primary_failure) {
