@@ -152,7 +152,9 @@ function Test-InstalledArchitectureFixture {
         [Parameter(Mandatory)][string]$ArchitectureInclude
     )
 
-    $fixture_id = 'GnuCashArchitectureFixture' + [guid]::NewGuid().ToString('N')
+    # Inno shortens ASCII AppIds longer than 57 characters before appending _is1.
+    $fixture_id = 'GncArch' + [guid]::NewGuid().ToString('N')
+    Assert-True ($fixture_id.Length -le 57) 'The fixture AppId would be shortened by Inno.'
     $product_key = "${fixture_id}_is1"
     $expected_install = Join-Path (Get-ProgramFiles64) $fixture_id
     $output = Join-Path $Root 'architecture-output'
@@ -265,7 +267,7 @@ function Test-PreviousInstallRegistryViews {
         [Parameter(Mandatory)][string]$PreviousInstallInclude
     )
 
-    $fixture_id = 'GnuCashPreviousInstallFixture' + [guid]::NewGuid().ToString('N')
+    $fixture_id = 'GncPrev' + [guid]::NewGuid().ToString('N')
     $uninstall_key = "Software\Microsoft\Windows\CurrentVersion\Uninstall\${fixture_id}_legacy"
     $version_key = "Software\${fixture_id}\Version"
     $output = Join-Path $Root 'lookup-output'
@@ -351,8 +353,9 @@ function Test-PreviousUninstallContract {
         [Parameter(Mandatory)][string]$PreviousInstallInclude
     )
 
-    $fixture_id = 'GnuCashUninstallFixture' + [guid]::NewGuid().ToString('N')
+    $fixture_id = 'GncUninst' + [guid]::NewGuid().ToString('N')
     $legacy_app_id = "${fixture_id}_legacy"
+    Assert-True ($legacy_app_id.Length -le 57) 'The legacy fixture AppId would be shortened by Inno.'
     $legacy_product_key = "${legacy_app_id}_is1"
     $legacy_uninstall_key = "Software\Microsoft\Windows\CurrentVersion\Uninstall\$legacy_product_key"
     $version_key = "Software\${fixture_id}\Version"
