@@ -40,3 +40,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & ./inno_setup/tests/Gtk3Payload.Tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Inno Setup for source fixtures
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test optional Inno source fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./inno_setup/tests/Gtk3Payload.Tests.ps1 `
+            -InnoCompiler "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

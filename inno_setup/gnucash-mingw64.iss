@@ -246,7 +246,9 @@ Source: "@MINGW_DIR@\share\OpenSP\*"; DestDir: "{app}\share\OpenSP"; Flags: recu
 Source: "@MINGW_DIR@\share\icons\*"; DestDir: "{app}\share\icons"; Excludes: "gtk3-demo*,gtk3-widget-factory*"; Flags: recursesubdirs; Components: main
 ; Theme key bindings are version-specific. Excluding the subtree rather than
 ; today's Default and Emacs instances keeps future GTK3 theme payload out too.
-Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Excludes: "gtk-3.0\*"; Flags: recursesubdirs; Components: main
+; The UCRT64 GTK4 dependency set need not install any external themes. Keep
+; the source optional, while preserving a supplied GTK4 theme tree when present.
+Source: "@MINGW_DIR@\share\themes\*"; DestDir: "{app}\share\themes"; Excludes: "gtk-3.0\*"; Flags: recursesubdirs skipifsourcedoesntexist; Components: main
 Source: "@MINGW_DIR@\share\gtk-4.0\*"; DestDir: "{app}\share\gtk-4.0"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\iso-codes\*"; DestDir: "{app}\share\xml\iso-codes"; Flags: recursesubdirs; Components: main
 Source: "@MINGW_DIR@\share\xml\fontconfig\*"; DestDir: "{app}\share\xml\fontconfig"; Flags: recursesubdirs; Components: main
