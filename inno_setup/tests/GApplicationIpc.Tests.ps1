@@ -79,7 +79,15 @@ try {
                 $state.PrimaryCwd = $Parameters.WorkingDirectory
                 $ready = [string]$Parameters.ArgumentList[1]
                 $ready = $ready.Trim('"')
+                $bus_probe = ([string]$Parameters.ArgumentList[2]).Trim('"')
                 Set-Content -LiteralPath $ready -Value 'remote=false' -Encoding utf8
+                @(
+                    'succeeded=true'
+                    'unique_name=:1.1'
+                ) | Set-Content -LiteralPath $bus_probe -Encoding utf8
+                if ($Parameters.Environment.G_DBUS_DEBUG -ne 'address') {
+                    throw 'Primary did not enable the bounded GDBus address diagnostics.'
+                }
                 $state.Primary = & $new_mock_process -Id 101 -Path $Parameters.FilePath `
                     -ExitCode 0 -HasExited $false -Modules @(
                         [pscustomobject]@{ FileName = $installed_gio }
@@ -235,7 +243,10 @@ try {
         param($Parameters, $Purpose)
         if ($Purpose -eq 'Primary') {
             $ready = ([string]$Parameters.ArgumentList[1]).Trim('"')
+            $bus_probe = ([string]$Parameters.ArgumentList[2]).Trim('"')
             Set-Content -LiteralPath $ready -Value 'remote=false' -Encoding utf8
+            @('succeeded=true', 'unique_name=:1.2') |
+                Set-Content -LiteralPath $bus_probe -Encoding utf8
             $missing_state.Primary = & $new_mock_process -Id 501 -Path $Parameters.FilePath `
                 -ExitCode 0 -HasExited $false -Modules @(
                     [pscustomobject]@{ FileName = $installed_gio }
@@ -281,7 +292,10 @@ try {
         param($Parameters, $Purpose)
         if ($Purpose -eq 'Primary') {
             $ready = ([string]$Parameters.ArgumentList[1]).Trim('"')
+            $bus_probe = ([string]$Parameters.ArgumentList[2]).Trim('"')
             Set-Content -LiteralPath $ready -Value 'remote=false' -Encoding utf8
+            @('succeeded=true', 'unique_name=:1.3') |
+                Set-Content -LiteralPath $bus_probe -Encoding utf8
             $timeout_state.Primary = & $new_mock_process -Id 601 -Path $Parameters.FilePath `
                 -ExitCode 0 -HasExited $false -Modules @(
                     [pscustomobject]@{ FileName = $installed_gio }

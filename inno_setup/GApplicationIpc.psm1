@@ -205,6 +205,7 @@ function Invoke-GApplicationIpcRuntimeTest {
         $GdbusSnapshotProvider = { Get-GdbusProcessSnapshot }
     }
     $ready_path = Join-Path $diagnostics 'gapplication-ipc-primary.txt'
+    $bus_probe_path = Join-Path $diagnostics 'gapplication-ipc-session-bus.txt'
     $forward_path = Join-Path $diagnostics 'gapplication-ipc-forward.txt'
     $primary_cwd = Join-Path $diagnostics 'gapplication-ipc-primary-cwd'
     $client_cwd = Join-Path $diagnostics 'gapplication-ipc-client-cwd'
@@ -236,10 +237,11 @@ function Invoke-GApplicationIpcRuntimeTest {
 
         $primary = & $ProcessLauncher @{
             FilePath = $fixture
-            ArgumentList = @('--primary', "`"$ready_path`"")
+            ArgumentList = @('--primary', "`"$ready_path`"", "`"$bus_probe_path`"")
             WorkingDirectory = $primary_cwd
             WindowStyle = 'Hidden'
             PassThru = $true
+            Environment = @{ G_DBUS_DEBUG = 'address' }
             RedirectStandardOutput = (Join-Path $diagnostics 'gapplication-ipc-primary.stdout.log')
             RedirectStandardError = (Join-Path $diagnostics 'gapplication-ipc-primary.stderr.log')
         } 'Primary'
@@ -247,7 +249,28 @@ function Invoke-GApplicationIpcRuntimeTest {
             throw 'GApplication IPC primary launcher returned no process.'
         }
         $result.PrimaryProcessId = [int]$primary.Id
+        try {
+            $startup_modules = @($primary.Modules | ForEach-Object {
+                [IO.Path]::GetFullPath([string]$_.FileName)
+            })
+            Write-IpcDiagnosticJson -Path `
+                (Join-Path $diagnostics 'gapplication-ipc-primary-modules-startup.json') `
+                -Value $startup_modules
+        }
+        catch {
+            Write-IpcDiagnosticJson -Path `
+                (Join-Path $diagnostics 'gapplication-ipc-primary-modules-startup-error.json') `
+                -Value ([ordered]@{ Error = $_.Exception.Message })
+        }
         Wait-IpcFile -Path $ready_path -PrimaryProcess $primary
+        if (!(Test-Path -LiteralPath $bus_probe_path)) {
+            throw 'GApplication IPC primary process did not write its session-bus probe.'
+        }
+        $bus_probe = Read-IpcRecord -Path $bus_probe_path
+        if ($bus_probe.succeeded -cne 'true' -or
+            [string]::IsNullOrWhiteSpace([string]$bus_probe.unique_name)) {
+            throw 'GApplication IPC primary process did not establish a named session-bus connection.'
+        }
         $primary_record = Read-IpcRecord -Path $ready_path
         if ($primary_record.remote -cne 'false') {
             throw 'GApplication IPC primary invocation was not local.'
@@ -386,8 +409,20 @@ function Invoke-GApplicationIpcRuntimeTest {
         return [pscustomobject]$result
     }
     catch {
-        $result.Error = $_.Exception.Message
-        throw
+        $failure = $_
+        $result.Error = $failure.Exception.Message
+        try {
+            $failure_snapshot = & $GdbusSnapshotProvider
+            Write-IpcDiagnosticJson -Path `
+                (Join-Path $diagnostics 'gapplication-ipc-gdbus-failure.json') `
+                -Value $failure_snapshot
+        }
+        catch {
+            Write-IpcDiagnosticJson -Path `
+                (Join-Path $diagnostics 'gapplication-ipc-gdbus-failure-error.json') `
+                -Value ([ordered]@{ Error = $_.Exception.Message })
+        }
+        throw $failure
     }
     finally {
         if (!$result.Succeeded) {

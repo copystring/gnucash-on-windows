@@ -1,0 +1,102 @@
+name: GApplication IPC runtime probe
+
+on:
+    push:
+        paths:
+            - '.github/workflows/gapplication-ipc-runtime-probe.yml'
+            - 'inno_setup/GApplicationIpc.psm1'
+            - 'inno_setup/tests/GApplicationIpc.Tests.ps1'
+            - 'inno_setup/tests/gapplication-ipc-fixture.c'
+    pull_request:
+        paths:
+            - '.github/workflows/gapplication-ipc-runtime-probe.yml'
+            - 'inno_setup/GApplicationIpc.psm1'
+            - 'inno_setup/tests/GApplicationIpc.Tests.ps1'
+            - 'inno_setup/tests/gapplication-ipc-fixture.c'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    gapplication_ipc_runtime_probe:
+        name: Verify UCRT64 GApplication IPC
+        runs-on: windows-latest
+        timeout-minutes: 10
+        defaults:
+          run:
+            shell: pwsh
+        steps:
+        - name: Set up UCRT64 GLib toolchain
+          uses: msys2/setup-msys2@v2
+          with:
+            msystem: UCRT64
+            update: true
+            pacboy: toolchain:p glib2:p
+
+        - name: Check out IPC verifier sources
+          uses: actions/checkout@v7
+          with:
+            sparse-checkout: |
+                inno_setup
+
+        - name: Build GApplication IPC fixture
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            cc -Wall -Wextra -Werror \
+              "$GITHUB_WORKSPACE/inno_setup/tests/gapplication-ipc-fixture.c" \
+              $(pkg-config --cflags --libs gio-2.0) \
+              -o "$RUNNER_TEMP/gapplication-ipc-fixture.exe"
+
+        - name: Verify UCRT64 GLib session-bus IPC
+          run: |
+            $ErrorActionPreference = 'Stop'
+            Import-Module .\inno_setup\GApplicationIpc.psm1 -Force
+            $msysPrefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').Trim()
+            $diagnostics = Join-Path $Env:RUNNER_TEMP 'gapplication-ipc-runtime-probe'
+            New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
+            $createProcessRecord = Join-Path $diagnostics 'create-process-startupinfo.txt'
+            $oldPath = [Environment]::GetEnvironmentVariable('PATH', 'Process')
+            $oldBusAddress = [Environment]::GetEnvironmentVariable(
+                'DBUS_SESSION_BUS_ADDRESS', 'Process')
+            $oldRuntimeDirectory = [Environment]::GetEnvironmentVariable(
+                'XDG_RUNTIME_DIR', 'Process')
+            try {
+                $isolatedPath = @(
+                    (Join-Path $msysPrefix 'bin')
+                    (Join-Path $Env:SystemRoot 'System32')
+                    $Env:SystemRoot
+                ) -join [IO.Path]::PathSeparator
+                [Environment]::SetEnvironmentVariable('PATH', $isolatedPath, 'Process')
+                [Environment]::SetEnvironmentVariable(
+                    'DBUS_SESSION_BUS_ADDRESS', $null, 'Process')
+                [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $null, 'Process')
+                & "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
+                    --win32-create-process-probe $createProcessRecord
+                if ($LASTEXITCODE -ne 0) {
+                    throw "CreateProcessW STARTUPINFO probe failed with exit code $LASTEXITCODE."
+                }
+                Invoke-GApplicationIpcRuntimeTest `
+                    -FixturePath "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
+                    -InstallRoot $msysPrefix `
+                    -DiagnosticsDirectory $diagnostics | Out-Null
+                Wait-GdbusQuiescence `
+                    -DiagnosticPath (Join-Path $diagnostics 'gdbus-quiescence.json')
+            }
+            finally {
+                [Environment]::SetEnvironmentVariable('PATH', $oldPath, 'Process')
+                [Environment]::SetEnvironmentVariable(
+                    'DBUS_SESSION_BUS_ADDRESS', $oldBusAddress, 'Process')
+                [Environment]::SetEnvironmentVariable(
+                    'XDG_RUNTIME_DIR', $oldRuntimeDirectory, 'Process')
+            }
+
+        - name: Upload IPC diagnostics
+          if: ${{ always() }}
+          uses: actions/upload-artifact@v7
+          with:
+            name: gapplication-ipc-runtime-probe-${{ github.run_id }}-${{ github.run_attempt }}
+            path: ${{ runner.temp }}/gapplication-ipc-runtime-probe
+            if-no-files-found: warn
+            compression-level: 6
