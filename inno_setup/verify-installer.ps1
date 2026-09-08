@@ -264,16 +264,16 @@ try {
     $old_guile_load_path = $env:GUILE_LOAD_PATH
     $old_guile_load_compiled_path = $env:GUILE_LOAD_COMPILED_PATH
     $old_scheme_library_path = $env:SCHEME_LIBRARY_PATH
-    $old_dbus_session_bus_address = [Environment]::GetEnvironmentVariable(
-        'DBUS_SESSION_BUS_ADDRESS', 'Process')
-    $old_xdg_runtime_dir = [Environment]::GetEnvironmentVariable('XDG_RUNTIME_DIR', 'Process')
+    $old_dbus_session_bus_address = Get-ProcessEnvironmentVariableState `
+        -Name 'DBUS_SESSION_BUS_ADDRESS'
+    $old_xdg_runtime_dir = Get-ProcessEnvironmentVariableState -Name 'XDG_RUNTIME_DIR'
     try {
         $env:PATH = "$install\bin;$env:SystemRoot\System32;$env:SystemRoot"
         $env:GUILE_LOAD_PATH = ''
         $env:GUILE_LOAD_COMPILED_PATH = ''
         $env:SCHEME_LIBRARY_PATH = ''
-        [Environment]::SetEnvironmentVariable('DBUS_SESSION_BUS_ADDRESS', $null, 'Process')
-        [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $null, 'Process')
+        Remove-ProcessEnvironmentVariable -Name 'DBUS_SESSION_BUS_ADDRESS'
+        Remove-ProcessEnvironmentVariable -Name 'XDG_RUNTIME_DIR'
         Invoke-GApplicationIpcRuntimeTest -FixturePath $GApplicationFixturePath `
             -InstallRoot $install -DiagnosticsDirectory $diagnostics | Out-Null
         $version = Invoke-CheckedGnuCashVersion -FilePath "$install\bin\gnucash.exe" `
@@ -287,9 +287,10 @@ try {
         $env:GUILE_LOAD_PATH = $old_guile_load_path
         $env:GUILE_LOAD_COMPILED_PATH = $old_guile_load_compiled_path
         $env:SCHEME_LIBRARY_PATH = $old_scheme_library_path
-        [Environment]::SetEnvironmentVariable(
-            'DBUS_SESSION_BUS_ADDRESS', $old_dbus_session_bus_address, 'Process')
-        [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $old_xdg_runtime_dir, 'Process')
+        Restore-ProcessEnvironmentVariableState -Name 'DBUS_SESSION_BUS_ADDRESS' `
+            -State $old_dbus_session_bus_address
+        Restore-ProcessEnvironmentVariableState -Name 'XDG_RUNTIME_DIR' `
+            -State $old_xdg_runtime_dir
     }
 }
 catch {

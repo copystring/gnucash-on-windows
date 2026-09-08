@@ -49,6 +49,11 @@ jobs:
               $(pkg-config --cflags --libs gio-2.0) \
               -o "$RUNNER_TEMP/gapplication-ipc-fixture.exe"
 
+        - name: Test IPC verifier contracts
+          run: |
+            & .\inno_setup\tests\GApplicationIpc.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
         - name: Verify UCRT64 GLib session-bus IPC
           run: |
             $ErrorActionPreference = 'Stop'
@@ -57,21 +62,20 @@ jobs:
             $diagnostics = Join-Path $Env:RUNNER_TEMP 'gapplication-ipc-runtime-probe'
             New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
             $createProcessRecord = Join-Path $diagnostics 'create-process-startupinfo.txt'
-            $oldPath = [Environment]::GetEnvironmentVariable('PATH', 'Process')
-            $oldBusAddress = [Environment]::GetEnvironmentVariable(
-                'DBUS_SESSION_BUS_ADDRESS', 'Process')
-            $oldRuntimeDirectory = [Environment]::GetEnvironmentVariable(
-                'XDG_RUNTIME_DIR', 'Process')
+            $oldPath = Get-ProcessEnvironmentVariableState -Name 'PATH'
+            $oldBusAddress = Get-ProcessEnvironmentVariableState `
+                -Name 'DBUS_SESSION_BUS_ADDRESS'
+            $oldRuntimeDirectory = Get-ProcessEnvironmentVariableState `
+                -Name 'XDG_RUNTIME_DIR'
             try {
                 $isolatedPath = @(
                     (Join-Path $msysPrefix 'bin')
                     (Join-Path $Env:SystemRoot 'System32')
                     $Env:SystemRoot
                 ) -join [IO.Path]::PathSeparator
-                [Environment]::SetEnvironmentVariable('PATH', $isolatedPath, 'Process')
-                [Environment]::SetEnvironmentVariable(
-                    'DBUS_SESSION_BUS_ADDRESS', $null, 'Process')
-                [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $null, 'Process')
+                Set-Item -LiteralPath Env:PATH -Value $isolatedPath
+                Remove-ProcessEnvironmentVariable -Name 'DBUS_SESSION_BUS_ADDRESS'
+                Remove-ProcessEnvironmentVariable -Name 'XDG_RUNTIME_DIR'
                 & "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
                     --win32-create-process-probe $createProcessRecord
                 if ($LASTEXITCODE -ne 0) {
@@ -85,11 +89,11 @@ jobs:
                     -DiagnosticPath (Join-Path $diagnostics 'gdbus-quiescence.json')
             }
             finally {
-                [Environment]::SetEnvironmentVariable('PATH', $oldPath, 'Process')
-                [Environment]::SetEnvironmentVariable(
-                    'DBUS_SESSION_BUS_ADDRESS', $oldBusAddress, 'Process')
-                [Environment]::SetEnvironmentVariable(
-                    'XDG_RUNTIME_DIR', $oldRuntimeDirectory, 'Process')
+                Restore-ProcessEnvironmentVariableState -Name 'PATH' -State $oldPath
+                Restore-ProcessEnvironmentVariableState `
+                    -Name 'DBUS_SESSION_BUS_ADDRESS' -State $oldBusAddress
+                Restore-ProcessEnvironmentVariableState `
+                    -Name 'XDG_RUNTIME_DIR' -State $oldRuntimeDirectory
             }
 
         - name: Upload IPC diagnostics

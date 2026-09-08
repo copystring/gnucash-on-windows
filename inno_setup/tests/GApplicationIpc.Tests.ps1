@@ -49,6 +49,41 @@ New-Item -ItemType Directory -Path $test_root | Out-Null
 $resolved_test_root = (Resolve-Path -LiteralPath $test_root).Path
 
 try {
+    $environment_name = 'GNC_GAPPLICATION_IPC_TEST_' + [guid]::NewGuid().ToString('N')
+    $environment_path = "Env:$environment_name"
+    try {
+        Remove-ProcessEnvironmentVariable -Name $environment_name
+        $absent_state = Get-ProcessEnvironmentVariableState -Name $environment_name
+        Assert-True (!$absent_state.Exists -and $null -eq $absent_state.Value) `
+            'Absent process environment state was not preserved distinctly.'
+        Set-Item -LiteralPath $environment_path -Value 'temporary'
+        Restore-ProcessEnvironmentVariableState -Name $environment_name -State $absent_state
+        Assert-True (!(Test-Path -LiteralPath $environment_path)) `
+            'Restoring an absent process environment variable left an empty variable.'
+
+        Set-Item -LiteralPath $environment_path -Value ''
+        $empty_state = Get-ProcessEnvironmentVariableState -Name $environment_name
+        Assert-True ($empty_state.Exists -and $empty_state.Value -ceq '') `
+            'Empty process environment state was confused with absence.'
+        Set-Item -LiteralPath $environment_path -Value 'temporary'
+        Restore-ProcessEnvironmentVariableState -Name $environment_name -State $empty_state
+        $restored_empty = Get-Item -LiteralPath $environment_path
+        Assert-True ($restored_empty.Value -ceq '') `
+            'Empty process environment value was not restored exactly.'
+
+        Set-Item -LiteralPath $environment_path -Value 'fixture-value'
+        $value_state = Get-ProcessEnvironmentVariableState -Name $environment_name
+        Assert-True ($value_state.Exists -and $value_state.Value -ceq 'fixture-value') `
+            'Populated process environment state was not captured exactly.'
+        Set-Item -LiteralPath $environment_path -Value 'temporary'
+        Restore-ProcessEnvironmentVariableState -Name $environment_name -State $value_state
+        Assert-True ((Get-Item -LiteralPath $environment_path).Value -ceq 'fixture-value') `
+            'Populated process environment value was not restored exactly.'
+    }
+    finally {
+        Remove-Item -LiteralPath $environment_path -ErrorAction SilentlyContinue
+    }
+
     $fixture = Join-Path $test_root 'gapplication-ipc-fixture.exe'
     $install = Join-Path $test_root 'installed'
     $installed_helper = Join-Path $install 'bin\gdbus.exe'

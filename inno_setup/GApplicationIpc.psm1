@@ -5,6 +5,39 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-ProcessEnvironmentVariableState {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $item = Get-Item -LiteralPath "Env:$Name" -ErrorAction SilentlyContinue
+    return [pscustomobject]@{
+        Exists = $null -ne $item
+        Value = if ($null -eq $item) { $null } else { $item.Value }
+    }
+}
+
+function Remove-ProcessEnvironmentVariable {
+    param([Parameter(Mandatory)][string]$Name)
+
+    Remove-Item -LiteralPath "Env:$Name" -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath "Env:$Name") {
+        throw "Unable to remove process environment variable $Name."
+    }
+}
+
+function Restore-ProcessEnvironmentVariableState {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][object]$State
+    )
+
+    if ($State.Exists) {
+        Set-Item -LiteralPath "Env:$Name" -Value $State.Value
+    }
+    else {
+        Remove-ProcessEnvironmentVariable -Name $Name
+    }
+}
+
 function Write-IpcDiagnosticJson {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -458,6 +491,9 @@ function Invoke-GApplicationIpcRuntimeTest {
 
 Export-ModuleMember -Function @(
     'Get-GdbusProcessSnapshot',
+    'Get-ProcessEnvironmentVariableState',
     'Invoke-GApplicationIpcRuntimeTest',
+    'Remove-ProcessEnvironmentVariable',
+    'Restore-ProcessEnvironmentVariableState',
     'Wait-GdbusQuiescence'
 )
