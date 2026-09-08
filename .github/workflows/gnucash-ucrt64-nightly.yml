@@ -147,6 +147,17 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & .\inno_setup\tests\InstallerDiagnostics.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\inno_setup\tests\GApplicationIpc.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        - name: Build GApplication IPC runtime fixture
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            cc -Wall -Wextra -Werror \
+              "$GITHUB_WORKSPACE/inno_setup/tests/gapplication-ipc-fixture.c" \
+              $(pkg-config --cflags --libs gio-2.0) \
+              -o "$RUNNER_TEMP/gapplication-ipc-fixture.exe"
 
         - name: Checkout GnuCash Docs
           uses: actions/checkout@v7
@@ -283,6 +294,7 @@ jobs:
             $msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
             & .\inno_setup\verify-installer.ps1 `
                 -InstallerPath ".\$Env:FINAL_NAME" `
+                -GApplicationFixturePath "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
                 -GSettingsPath "$msys_prefix\bin\gsettings.exe" `
                 -DiagnosticsDirectory "$Env:RUNNER_TEMP\installer-preflight-diagnostics"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

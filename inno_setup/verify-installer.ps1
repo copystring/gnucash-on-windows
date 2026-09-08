@@ -10,6 +10,8 @@
 param(
     [Parameter(Mandatory)]
     [string]$InstallerPath,
+    [Parameter(Mandatory)]
+    [string]$GApplicationFixturePath,
     [string]$InstallPath,
     [string]$GSettingsPath,
     [string]$DiagnosticsDirectory
@@ -22,6 +24,7 @@ Import-Module (Join-Path $PSScriptRoot 'GSettingsSchemas.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Gtk3Payload.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'InstallerArchitecture.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'InstallerDiagnostics.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GApplicationIpc.psm1') -Force
 
 if ([string]::IsNullOrWhiteSpace($GSettingsPath)) {
     $gsettings_command = Get-Command 'gsettings.exe' -ErrorAction SilentlyContinue
@@ -207,6 +210,7 @@ try {
 
     foreach ($required in @(
         "$install\bin\gnucash.exe",
+        "$install\bin\gdbus.exe",
         "$install\bin\libgtk-4-1.dll",
         "$install\share\glib-2.0\schemas\gschemas.compiled",
         "$install\share\glib-2.0\schemas\org.gtk.gtk4.Settings.*.gschema.xml"
@@ -260,20 +264,32 @@ try {
     $old_guile_load_path = $env:GUILE_LOAD_PATH
     $old_guile_load_compiled_path = $env:GUILE_LOAD_COMPILED_PATH
     $old_scheme_library_path = $env:SCHEME_LIBRARY_PATH
+    $old_dbus_session_bus_address = [Environment]::GetEnvironmentVariable(
+        'DBUS_SESSION_BUS_ADDRESS', 'Process')
+    $old_xdg_runtime_dir = [Environment]::GetEnvironmentVariable('XDG_RUNTIME_DIR', 'Process')
     try {
         $env:PATH = "$install\bin;$env:SystemRoot\System32;$env:SystemRoot"
         $env:GUILE_LOAD_PATH = ''
         $env:GUILE_LOAD_COMPILED_PATH = ''
         $env:SCHEME_LIBRARY_PATH = ''
+        [Environment]::SetEnvironmentVariable('DBUS_SESSION_BUS_ADDRESS', $null, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $null, 'Process')
+        Invoke-GApplicationIpcRuntimeTest -FixturePath $GApplicationFixturePath `
+            -InstallRoot $install -DiagnosticsDirectory $diagnostics | Out-Null
         $version = Invoke-CheckedGnuCashVersion -FilePath "$install\bin\gnucash.exe" `
             -StandardOutputPath $version_stdout_log -StandardErrorPath $version_stderr_log `
             -ProcessResultsPath $process_results_log
+        Wait-GdbusQuiescence `
+            -DiagnosticPath (Join-Path $diagnostics 'gdbus-after-gnucash-version.json')
     }
     finally {
         $env:PATH = $old_path
         $env:GUILE_LOAD_PATH = $old_guile_load_path
         $env:GUILE_LOAD_COMPILED_PATH = $old_guile_load_compiled_path
         $env:SCHEME_LIBRARY_PATH = $old_scheme_library_path
+        [Environment]::SetEnvironmentVariable(
+            'DBUS_SESSION_BUS_ADDRESS', $old_dbus_session_bus_address, 'Process')
+        [Environment]::SetEnvironmentVariable('XDG_RUNTIME_DIR', $old_xdg_runtime_dir, 'Process')
     }
 }
 catch {
