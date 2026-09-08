@@ -309,6 +309,9 @@ function Invoke-GApplicationIpcRuntimeTest {
             throw 'GApplication IPC primary invocation was not local.'
         }
         try {
+            # Modules caches the early loader snapshot. The readiness record
+            # now proves initialization is complete, so inspect fresh state.
+            $primary.Refresh()
             $primary_modules = @($primary.Modules | ForEach-Object {
                 [IO.Path]::GetFullPath([string]$_.FileName)
             })

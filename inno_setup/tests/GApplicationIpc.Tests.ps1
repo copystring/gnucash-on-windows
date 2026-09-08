@@ -25,13 +25,19 @@ function New-MockProcess {
         Path = $Path
         ExitCode = $ExitCode
         HasExited = $HasExited
-        Modules = $Modules
+        Modules = @()
+        ReadyModules = $Modules
+        Refreshed = $false
         Killed = $false
         Disposed = $false
     }
     $process | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {
         param([int]$TimeoutMilliseconds)
         return $this.HasExited
+    }
+    $process | Add-Member -MemberType ScriptMethod -Name Refresh -Value {
+        $this.Modules = $this.ReadyModules
+        $this.Refreshed = $true
     }
     $process | Add-Member -MemberType ScriptMethod -Name Kill -Value {
         $this.Killed = $true
@@ -183,6 +189,8 @@ try {
         -DiagnosticsDirectory $diagnostics -ProcessLauncher $launcher `
         -GdbusSnapshotProvider $snapshots
     Assert-True $result.Succeeded 'Mocked installed-runtime IPC contract did not pass.'
+    Assert-True $state.Primary.Refreshed `
+        'The post-readiness module check reused the cached loader snapshot.'
     Assert-True ($result.PrimaryProcessId -eq 101 -and $result.ForwardProcessId -eq 102 -and `
         $result.RejectedProcessId -eq 103 -and $result.QuitProcessId -eq 104) `
         'IPC process identities were not preserved.'
