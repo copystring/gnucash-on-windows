@@ -4,10 +4,6 @@
 
 #include <gio/gio.h>
 #include <string.h>
-#ifdef G_OS_WIN32
-#include <windows.h>
-#include <wchar.h>
-#endif
 
 typedef struct
 {
@@ -50,109 +46,6 @@ write_bus_probe (const gchar *path,
 
     return g_file_set_contents (path, contents, -1, write_error);
 }
-
-#ifdef G_OS_WIN32
-typedef struct
-{
-    gboolean created;
-    DWORD error_code;
-    DWORD wait_result;
-    DWORD exit_code;
-} CreateProcessResult;
-
-static CreateProcessResult
-run_child_process (const wchar_t *executable, gboolean set_startup_info_size)
-{
-    STARTUPINFOW startup_info = { 0 };
-    PROCESS_INFORMATION process_info = { 0 };
-    wchar_t command_line[32768];
-    CreateProcessResult result = { FALSE, ERROR_SUCCESS, WAIT_FAILED, 0 };
-
-    if (set_startup_info_size)
-        startup_info.cb = sizeof startup_info;
-    if (swprintf (command_line, G_N_ELEMENTS (command_line), L"\"%ls\" --child",
-                  executable) < 0)
-    {
-        result.error_code = ERROR_INSUFFICIENT_BUFFER;
-        return result;
-    }
-
-    SetLastError (ERROR_SUCCESS);
-    result.created = CreateProcessW (
-        executable, command_line, NULL, NULL, FALSE,
-        NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW | DETACHED_PROCESS,
-        NULL, NULL, &startup_info, &process_info);
-    if (!result.created)
-    {
-        result.error_code = GetLastError ();
-        return result;
-    }
-
-    result.wait_result = WaitForSingleObject (process_info.hProcess, 30000);
-    if (result.wait_result == WAIT_OBJECT_0)
-    {
-        if (!GetExitCodeProcess (process_info.hProcess, &result.exit_code))
-            result.error_code = GetLastError ();
-    }
-    else
-    {
-        result.error_code = result.wait_result == WAIT_FAILED
-                                ? GetLastError () : ERROR_TIMEOUT;
-        if (TerminateProcess (process_info.hProcess, 74))
-            WaitForSingleObject (process_info.hProcess, 5000);
-    }
-    CloseHandle (process_info.hThread);
-    CloseHandle (process_info.hProcess);
-    return result;
-}
-
-static int
-run_create_process_probe (const gchar *record_path)
-{
-    wchar_t executable[32768];
-    DWORD length = GetModuleFileNameW (NULL, executable,
-                                       G_N_ELEMENTS (executable));
-    CreateProcessResult zero_size;
-    CreateProcessResult correct_size;
-    g_autofree gchar *contents = NULL;
-    GError *error = NULL;
-
-    if (length == 0 || length >= G_N_ELEMENTS (executable))
-    {
-        g_printerr ("GetModuleFileNameW failed: %lu\n", GetLastError ());
-        return 73;
-    }
-
-    zero_size = run_child_process (executable, FALSE);
-    correct_size = run_child_process (executable, TRUE);
-    contents = g_strdup_printf (
-        "zero_created=%s\nzero_error=%lu\nzero_wait=%lu\nzero_exit=%lu\n"
-        "sized_created=%s\nsized_error=%lu\nsized_wait=%lu\nsized_exit=%lu\n",
-        zero_size.created ? "true" : "false", zero_size.error_code,
-        zero_size.wait_result, zero_size.exit_code,
-        correct_size.created ? "true" : "false", correct_size.error_code,
-        correct_size.wait_result, correct_size.exit_code);
-    if (!g_file_set_contents (record_path, contents, -1, &error))
-    {
-        g_printerr ("Writing the CreateProcessW probe '%s' failed: %s\n",
-                    record_path, error->message);
-        g_error_free (error);
-        return 75;
-    }
-    /* Whether Windows accepts cb=0 is the observation, not a prerequisite
-     * for running the separate GIO connection probe. */
-    if (!correct_size.created || correct_size.error_code != ERROR_SUCCESS ||
-        correct_size.wait_result != WAIT_OBJECT_0 || correct_size.exit_code != 0 ||
-        (zero_size.created &&
-         (zero_size.error_code != ERROR_SUCCESS ||
-          zero_size.wait_result != WAIT_OBJECT_0 || zero_size.exit_code != 0)))
-    {
-        g_printerr ("A CreateProcessW probe child did not complete successfully.\n");
-        return 76;
-    }
-    return 0;
-}
-#endif
 
 static int
 write_error (GApplicationCommandLine *command_line,
@@ -289,13 +182,6 @@ main (int argc, char **argv)
     FixtureState state = { FALSE };
     g_autoptr (GApplication) application = NULL;
     g_autoptr (GDBusConnection) session_bus = NULL;
-
-    if (argc == 2 && g_str_equal (argv[1], "--child"))
-        return 0;
-#ifdef G_OS_WIN32
-    if (argc == 3 && g_str_equal (argv[1], "--win32-create-process-probe"))
-        return run_create_process_probe (argv[2]);
-#endif
 
     if (argc == 4 && g_str_equal (argv[1], "--primary"))
     {

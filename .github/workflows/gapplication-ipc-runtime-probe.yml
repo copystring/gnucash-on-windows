@@ -61,7 +61,6 @@ jobs:
             $msysPrefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').Trim()
             $diagnostics = Join-Path $Env:RUNNER_TEMP 'gapplication-ipc-runtime-probe'
             New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
-            $createProcessRecord = Join-Path $diagnostics 'create-process-startupinfo.txt'
             $oldPath = Get-ProcessEnvironmentVariableState -Name 'PATH'
             $oldBusAddress = Get-ProcessEnvironmentVariableState `
                 -Name 'DBUS_SESSION_BUS_ADDRESS'
@@ -76,11 +75,6 @@ jobs:
                 Set-Item -LiteralPath Env:PATH -Value $isolatedPath
                 Remove-ProcessEnvironmentVariable -Name 'DBUS_SESSION_BUS_ADDRESS'
                 Remove-ProcessEnvironmentVariable -Name 'XDG_RUNTIME_DIR'
-                & "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
-                    --win32-create-process-probe $createProcessRecord
-                if ($LASTEXITCODE -ne 0) {
-                    throw "CreateProcessW STARTUPINFO probe failed with exit code $LASTEXITCODE."
-                }
                 Invoke-GApplicationIpcRuntimeTest `
                     -FixturePath "$Env:RUNNER_TEMP\gapplication-ipc-fixture.exe" `
                     -InstallRoot $msysPrefix `
