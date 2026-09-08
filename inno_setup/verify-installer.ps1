@@ -11,7 +11,8 @@ param(
     [Parameter(Mandatory)]
     [string]$InstallerPath,
     [string]$InstallPath,
-    [string]$GSettingsPath
+    [string]$GSettingsPath,
+    [string]$DiagnosticsDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -20,6 +21,7 @@ $ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'GSettingsSchemas.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Gtk3Payload.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'InstallerArchitecture.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'InstallerDiagnostics.psm1') -Force
 
 if ([string]::IsNullOrWhiteSpace($GSettingsPath)) {
     $gsettings_command = Get-Command 'gsettings.exe' -ErrorAction SilentlyContinue
@@ -34,19 +36,6 @@ function Assert-ElevatedSession {
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'Installer preflight must be run from an elevated PowerShell session because the installer writes machine-wide registry keys.'
-    }
-}
-
-function Invoke-CheckedProcess {
-    param(
-        [Parameter(Mandatory)][string]$FilePath,
-        [string[]]$ArgumentList = @(),
-        [string]$Description = $FilePath
-    )
-
-    $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru -Wait
-    if ($process.ExitCode -ne 0) {
-        throw "$Description failed with exit code $($process.ExitCode)."
     }
 }
 
@@ -173,6 +162,17 @@ function Test-PeImportClosure {
 
 Assert-ElevatedSession
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
+$diagnostics = if ([string]::IsNullOrWhiteSpace($DiagnosticsDirectory)) {
+    Join-Path ([IO.Path]::GetTempPath()) "gnucash-installer-preflight-$PID"
+}
+else {
+    [IO.Path]::GetFullPath($DiagnosticsDirectory)
+}
+New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
+$installer_log = Join-Path $diagnostics 'installer.log'
+$uninstaller_log = Join-Path $diagnostics 'uninstaller.log'
+$process_results_log = Join-Path $diagnostics 'process-results.jsonl'
+$path_observations_log = Join-Path $diagnostics 'cleanup-path-observations.jsonl'
 $product_key = 'GnuCash_is1'
 Assert-InnoProductNotRegistered -ProductKey $product_key
 $using_default_path = [string]::IsNullOrWhiteSpace($InstallPath)
@@ -194,8 +194,8 @@ try {
     if (!$using_default_path) {
         $installer_arguments += "/DIR=`"$install`""
     }
-    Invoke-CheckedProcess -FilePath $installer -Description 'Silent installer' `
-        -ArgumentList $installer_arguments
+    $installer_exit_code = Invoke-CheckedInnoProcess -FilePath $installer -Description 'Silent installer' `
+        -ArgumentList $installer_arguments -LogPath $installer_log -ProcessResultsPath $process_results_log
     $installer_succeeded = $true
 
     Assert-InnoProductRegistration -ProductKey $product_key -ExpectedInstallLocation $install
@@ -283,26 +283,71 @@ finally {
     if (Test-Path -LiteralPath $install) {
         $uninstaller = Get-ChildItem -Path $install -File -Recurse -Filter 'unins*.exe' | Select-Object -First 1
         if (!$uninstaller -and $installer_succeeded -and !$primary_failure) {
+            Write-RemainingInstallInventory -Root $install `
+                -OutputPath (Join-Path $diagnostics 'remaining-installation-items-no-uninstaller.csv') | Out-Null
             throw "Installed uninstaller not found below $install."
         }
         if ($uninstaller) {
+            $install_path_remained = $false
             try {
-                Invoke-CheckedProcess -FilePath $uninstaller.FullName -Description 'Silent uninstaller' -ArgumentList @(
-                    '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-                )
-                if (Test-Path -LiteralPath $install) {
+                Write-Host "Selected uninstaller: $($uninstaller.FullName)"
+                $uninstaller_exit_code = Invoke-CheckedInnoProcess -FilePath $uninstaller.FullName `
+                    -Description 'Silent uninstaller' -ArgumentList @(
+                        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+                    ) -LogPath $uninstaller_log -ProcessResultsPath $process_results_log
+
+                $install_path_remained = Test-Path -LiteralPath $install
+                Write-InstallPathObservation -Root $install -Label 'immediate-after-uninstaller' `
+                    -OutputPath $path_observations_log | Out-Null
+                if ($install_path_remained) {
+                    Write-RemainingInstallInventory -Root $install `
+                        -OutputPath (Join-Path $diagnostics 'remaining-installation-items-immediate.csv') | Out-Null
+                    Start-Sleep -Seconds 2
+                    $install_path_remained_after_delay = Test-Path -LiteralPath $install
+                    Write-InstallPathObservation -Root $install -Label '2-seconds-after-uninstaller' `
+                        -OutputPath $path_observations_log | Out-Null
+                    if ($install_path_remained_after_delay) {
+                        Write-RemainingInstallInventory -Root $install `
+                            -OutputPath (Join-Path $diagnostics 'remaining-installation-items-after-2s.csv') | Out-Null
+                    }
+                    Write-Host "Installation root exists after 2-second observation: $install_path_remained_after_delay"
+                }
+
+                $registrations = @(Get-InnoProductRegistrations -ProductKey $product_key)
+                Write-ProductRegistrationDiagnostics -Registrations $registrations `
+                    -OutputPath (Join-Path $diagnostics 'post-uninstall-product-registrations.json') | Out-Null
+                Assert-InnoProductNotRegistered -ProductKey $product_key
+                if ($install_path_remained) {
                     throw "Silent uninstaller left the installation directory behind: $install"
                 }
-                Assert-InnoProductNotRegistered -ProductKey $product_key
             }
             catch {
+                $cleanup_failure = $_
+                if ((Test-Path -LiteralPath $install) -and !$install_path_remained) {
+                    Write-InstallPathObservation -Root $install -Label 'after-uninstaller-error' `
+                        -OutputPath $path_observations_log | Out-Null
+                    Write-RemainingInstallInventory -Root $install `
+                        -OutputPath (Join-Path $diagnostics 'remaining-installation-items-after-error.csv') | Out-Null
+                }
+                try {
+                    $registrations = @(Get-InnoProductRegistrations -ProductKey $product_key)
+                    Write-ProductRegistrationDiagnostics -Registrations $registrations `
+                        -OutputPath (Join-Path $diagnostics 'post-uninstall-product-registrations.json') | Out-Null
+                }
+                catch {
+                    Write-Warning "Unable to inspect post-uninstall product registrations: $($_.Exception.Message)"
+                }
                 if ($primary_failure) {
-                    Write-Warning "Installer cleanup failed after an earlier failure: $($_.Exception.Message)"
+                    Write-Warning "Installer cleanup failed after an earlier failure: $($cleanup_failure.Exception.Message)"
                 }
                 else {
-                    throw
+                    throw $cleanup_failure
                 }
             }
+        }
+        elseif ($primary_failure) {
+            Write-RemainingInstallInventory -Root $install `
+                -OutputPath (Join-Path $diagnostics 'remaining-installation-items-no-uninstaller.csv') | Out-Null
         }
     }
 }

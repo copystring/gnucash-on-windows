@@ -145,6 +145,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & .\inno_setup\tests\InstallerArchitecture.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\inno_setup\tests\InstallerDiagnostics.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         - name: Checkout GnuCash Docs
           uses: actions/checkout@v7
@@ -280,8 +282,17 @@ jobs:
             $msys_prefix = (msys2 -c 'cygpath -w $MSYSTEM_PREFIX').trim()
             & .\inno_setup\verify-installer.ps1 `
                 -InstallerPath ".\$Env:FINAL_NAME" `
-                -GSettingsPath "$msys_prefix\bin\gsettings.exe"
+                -GSettingsPath "$msys_prefix\bin\gsettings.exe" `
+                -DiagnosticsDirectory "$Env:RUNNER_TEMP\installer-preflight-diagnostics"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        - name: Upload installer preflight diagnostics
+          if: always()
+          uses: actions/upload-artifact@v7
+          with:
+            name: installer-preflight-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+            path: ${{ runner.temp }}/installer-preflight-diagnostics
+            if-no-files-found: ignore
 
         - name: Upload nightly build
           id: upload
