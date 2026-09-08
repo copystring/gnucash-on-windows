@@ -15,13 +15,15 @@ function Write-ProcessResult {
         [Parameter(Mandatory)][string]$Description,
         [Parameter(Mandatory)][string]$Executable,
         [AllowNull()][Nullable[int]]$ExitCode,
-        [AllowNull()][string]$StartError
+        [AllowNull()][string]$StartError,
+        [AllowNull()][Nullable[int]]$ProcessId = $null
     )
 
     try {
         $record = [ordered]@{
             Description = $Description
             Executable = $Executable
+            ProcessId = $ProcessId
             ExitCode = $ExitCode
             StartError = $StartError
         }
@@ -88,6 +90,205 @@ function Invoke-CheckedInnoProcess {
         throw "$Description failed with exit code $exit_code."
     }
     return $exit_code
+}
+
+function Invoke-CheckedGnuCashVersion {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$StandardOutputPath,
+        [Parameter(Mandatory)][string]$StandardErrorPath,
+        [Parameter(Mandatory)][string]$ProcessResultsPath,
+        [scriptblock]$ProcessLauncher
+    )
+
+    $stdout = [IO.Path]::GetFullPath($StandardOutputPath)
+    $stderr = [IO.Path]::GetFullPath($StandardErrorPath)
+    $results = [IO.Path]::GetFullPath($ProcessResultsPath)
+    foreach ($parent in @(
+        (Split-Path -Parent $stdout),
+        (Split-Path -Parent $stderr),
+        (Split-Path -Parent $results)
+    ) | Select-Object -Unique) {
+        if (!(Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+    }
+    $start_parameters = @{
+        FilePath = $FilePath
+        ArgumentList = @('--version')
+        WindowStyle = 'Hidden'
+        PassThru = $true
+        Wait = $true
+        RedirectStandardOutput = $stdout
+        RedirectStandardError = $stderr
+    }
+    if (!$ProcessLauncher) {
+        $ProcessLauncher = { param($Parameters) Start-Process @Parameters }
+    }
+
+    $process = $null
+    try {
+        try {
+            $process = & $ProcessLauncher $start_parameters
+        }
+        catch {
+            Write-ProcessResult -Path $results -Description 'GnuCash --version' -Executable $FilePath `
+                -ExitCode $null -StartError $_.Exception.Message | Out-Null
+            throw "GnuCash --version could not be started: $($_.Exception.Message)"
+        }
+
+        $process_id = if ($process -and $process.PSObject.Properties['Id'] -and
+            $null -ne $process.Id) { [int]$process.Id } else { $null }
+        if ($null -eq $process -or $null -eq $process.PSObject.Properties['ExitCode'] -or
+            $null -eq $process.ExitCode) {
+            Write-ProcessResult -Path $results -Description 'GnuCash --version' -Executable $FilePath `
+                -ExitCode $null -StartError 'Process launcher returned no exit code.' `
+                -ProcessId $process_id | Out-Null
+            throw 'GnuCash --version did not provide a process exit code.'
+        }
+
+        $exit_code = [int]$process.ExitCode
+        Write-ProcessResult -Path $results -Description 'GnuCash --version' -Executable $FilePath `
+            -ExitCode $exit_code -StartError $null -ProcessId $process_id | Out-Null
+        Write-Host "GnuCash --version process ID: $process_id; exit code: $exit_code"
+        $output = @(
+            if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
+            if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
+        )
+        if ($output.Count -ne 0) {
+            Write-Host ($output -join [Environment]::NewLine)
+        }
+        if ($exit_code -ne 0) {
+            throw "GnuCash --version failed with exit code ${exit_code}: $($output -join ' ')"
+        }
+        return [pscustomobject]@{
+            ProcessId = $process_id
+            ExitCode = $exit_code
+            Output = $output
+        }
+    }
+    finally {
+        if ($process -and $process.PSObject.Methods['Dispose']) {
+            $process.Dispose()
+        }
+    }
+}
+
+function Write-InstallPayloadProcessInventory {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$OutputPath,
+        [object[]]$Processes,
+        [scriptblock]$ProcessEnumerator
+    )
+
+    $dispose_processes = !$PSBoundParameters.ContainsKey('Processes')
+    $processes_to_dispose = @()
+    try {
+        $resolved_root = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+        $root_prefix = $resolved_root + [IO.Path]::DirectorySeparatorChar
+        $owners = [System.Collections.Generic.List[object]]::new()
+        $inspection_errors = [System.Collections.Generic.List[object]]::new()
+        if ($dispose_processes) {
+            if ($ProcessEnumerator) {
+                $Processes = @(& $ProcessEnumerator)
+            }
+            else {
+                $process_enumeration_errors = @()
+                $Processes = @(Get-Process -ErrorAction SilentlyContinue `
+                    -ErrorVariable process_enumeration_errors)
+                foreach ($enumeration_error in @($process_enumeration_errors)) {
+                    $inspection_errors.Add([ordered]@{
+                        Stage = 'ProcessEnumeration'
+                        ProcessId = $null
+                        ProcessName = $null
+                        Error = $enumeration_error.Exception.Message
+                    })
+                }
+            }
+            $processes_to_dispose = @($Processes)
+        }
+        foreach ($process in @($Processes)) {
+            try {
+                $process_id = $process.Id
+                $process_name = $process.ProcessName
+                foreach ($module in @($process.Modules)) {
+                    $module_path = [string]$module.FileName
+                    if ([string]::IsNullOrWhiteSpace($module_path)) {
+                        continue
+                    }
+                    $full_module_path = [IO.Path]::GetFullPath($module_path)
+                    if ($full_module_path.StartsWith($root_prefix, [StringComparison]::OrdinalIgnoreCase)) {
+                        $owners.Add([ordered]@{
+                            ProcessId = $process_id
+                            ProcessName = $process_name
+                            ModulePath = $full_module_path
+                        })
+                    }
+                }
+            }
+            catch {
+                $inspection_error = $_
+                $failed_process_id = $null
+                $failed_process_name = $null
+                try { $failed_process_id = $process.Id } catch {}
+                try { $failed_process_name = $process.ProcessName } catch {}
+                $inspection_errors.Add([ordered]@{
+                    Stage = 'ModuleEnumeration'
+                    ProcessId = $failed_process_id
+                    ProcessName = $failed_process_name
+                    Error = $inspection_error.Exception.Message
+                })
+            }
+        }
+
+        $record = [ordered]@{
+            Root = $resolved_root
+            InspectionComplete = $inspection_errors.Count -eq 0
+            Owners = @($owners)
+            InspectionErrors = @($inspection_errors)
+        }
+        $output = [IO.Path]::GetFullPath($OutputPath)
+        $parent = Split-Path -Parent $output
+        if (!(Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        [IO.File]::WriteAllText(
+            $output,
+            (ConvertTo-Json -InputObject $record -Depth 5),
+            [Text.UTF8Encoding]::new($false))
+        Write-Host "Install-payload process owners: $($owners.Count); inspection errors: $($inspection_errors.Count); full JSON: $output"
+        foreach ($owner in $owners) {
+            Write-Host "  PID $($owner.ProcessId) $($owner.ProcessName): $($owner.ModulePath)"
+        }
+        return [pscustomobject]@{
+            Succeeded = $true
+            OwnerCount = $owners.Count
+            InspectionErrorCount = $inspection_errors.Count
+        }
+    }
+    catch {
+        Write-Warning "Unable to record install-payload process owners for ${Root}: $($_.Exception.Message)"
+        return [pscustomobject]@{
+            Succeeded = $false
+            OwnerCount = $null
+            InspectionErrorCount = $null
+        }
+    }
+    finally {
+        if ($dispose_processes) {
+            foreach ($process in $processes_to_dispose) {
+                try {
+                    if ($process -and $process.PSObject.Methods['Dispose']) {
+                        $process.Dispose()
+                    }
+                }
+                catch {
+                    Write-Warning "Unable to dispose inspected process object: $($_.Exception.Message)"
+                }
+            }
+        }
+    }
 }
 
 function Write-RemainingInstallInventory {
@@ -237,6 +438,8 @@ function Write-InstallPathObservation {
 
 Export-ModuleMember -Function @(
     'Invoke-CheckedInnoProcess',
+    'Invoke-CheckedGnuCashVersion',
+    'Write-InstallPayloadProcessInventory',
     'Write-RemainingInstallInventory',
     'Write-ProductRegistrationDiagnostics',
     'Write-InstallPathObservation'

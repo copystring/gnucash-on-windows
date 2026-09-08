@@ -173,6 +173,8 @@ $installer_log = Join-Path $diagnostics 'installer.log'
 $uninstaller_log = Join-Path $diagnostics 'uninstaller.log'
 $process_results_log = Join-Path $diagnostics 'process-results.jsonl'
 $path_observations_log = Join-Path $diagnostics 'cleanup-path-observations.jsonl'
+$version_stdout_log = Join-Path $diagnostics 'gnucash-version.stdout.log'
+$version_stderr_log = Join-Path $diagnostics 'gnucash-version.stderr.log'
 $product_key = 'GnuCash_is1'
 Assert-InnoProductNotRegistered -ProductKey $product_key
 $using_default_path = [string]::IsNullOrWhiteSpace($InstallPath)
@@ -263,10 +265,9 @@ try {
         $env:GUILE_LOAD_PATH = ''
         $env:GUILE_LOAD_COMPILED_PATH = ''
         $env:SCHEME_LIBRARY_PATH = ''
-        $version = & "$install\bin\gnucash.exe" --version 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "GnuCash --version failed with exit code ${LASTEXITCODE}: $($version -join ' ')"
-        }
+        $version = Invoke-CheckedGnuCashVersion -FilePath "$install\bin\gnucash.exe" `
+            -StandardOutputPath $version_stdout_log -StandardErrorPath $version_stderr_log `
+            -ProcessResultsPath $process_results_log
     }
     finally {
         $env:PATH = $old_path
@@ -291,6 +292,8 @@ finally {
             $install_path_remained = $false
             try {
                 Write-Host "Selected uninstaller: $($uninstaller.FullName)"
+                Write-InstallPayloadProcessInventory -Root $install `
+                    -OutputPath (Join-Path $diagnostics 'install-payload-processes-before-uninstall.json') | Out-Null
                 $uninstaller_exit_code = Invoke-CheckedInnoProcess -FilePath $uninstaller.FullName `
                     -Description 'Silent uninstaller' -ArgumentList @(
                         '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
@@ -309,6 +312,8 @@ finally {
                     if ($install_path_remained_after_delay) {
                         Write-RemainingInstallInventory -Root $install `
                             -OutputPath (Join-Path $diagnostics 'remaining-installation-items-after-2s.csv') | Out-Null
+                        Write-InstallPayloadProcessInventory -Root $install `
+                            -OutputPath (Join-Path $diagnostics 'install-payload-processes-after-2s.json') | Out-Null
                     }
                     Write-Host "Installation root exists after 2-second observation: $install_path_remained_after_delay"
                 }
@@ -328,6 +333,8 @@ finally {
                         -OutputPath $path_observations_log | Out-Null
                     Write-RemainingInstallInventory -Root $install `
                         -OutputPath (Join-Path $diagnostics 'remaining-installation-items-after-error.csv') | Out-Null
+                    Write-InstallPayloadProcessInventory -Root $install `
+                        -OutputPath (Join-Path $diagnostics 'install-payload-processes-after-error.json') | Out-Null
                 }
                 try {
                     $registrations = @(Get-InnoProductRegistrations -ProductKey $product_key)

@@ -276,6 +276,7 @@ jobs:
             "FINAL_NAME=$final_name" | Add-Content $Env:GITHUB_ENV
 
         - name: Verify GTK4 installer preflight
+          timeout-minutes: 10
           shell: pwsh
           run: |
             $ErrorActionPreference = 'Stop'

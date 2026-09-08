@@ -70,6 +70,90 @@ try {
     $missing_exit_record = Get-Content -LiteralPath $process_log | Select-Object -Last 1 | ConvertFrom-Json
     Assert-True ($null -eq $missing_exit_record.ExitCode) 'Null process exit code was not recorded as null.'
 
+    $version_stdout = Join-Path $test_root 'logs\version.stdout.log'
+    $version_stderr = Join-Path $test_root 'logs\version.stderr.log'
+    $script:captured_version_parameters = $null
+    $script:version_process = $null
+    $version_launcher = {
+        param($Parameters)
+        $script:captured_version_parameters = $Parameters
+        Set-Content -LiteralPath $Parameters.RedirectStandardOutput -Value 'GnuCash fixture 5.90'
+        Set-Content -LiteralPath $Parameters.RedirectStandardError -Value ''
+        $script:version_process = [pscustomobject]@{ Id = 81; ExitCode = 0; Disposed = $false }
+        $script:version_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+            $this.Disposed = $true
+        }
+        return $script:version_process
+    }
+    $version = Invoke-CheckedGnuCashVersion -FilePath 'fixture-gnucash.exe' `
+        -StandardOutputPath $version_stdout -StandardErrorPath $version_stderr `
+        -ProcessResultsPath $process_log -ProcessLauncher $version_launcher
+    Assert-True $script:captured_version_parameters.Wait 'Version process was not explicitly awaited.'
+    Assert-True $script:captured_version_parameters.PassThru 'Version process did not return a process handle.'
+    Assert-True ($script:captured_version_parameters.WindowStyle -eq 'Hidden') `
+        'Version process was not hidden.'
+    Assert-True ($version.Output -contains 'GnuCash fixture 5.90') 'Version output was not read after process completion.'
+    Assert-True ($version.ProcessId -eq 81) 'Version process ID was not returned.'
+    Assert-True $script:version_process.Disposed 'Version process handle was not disposed.'
+    $version_record = Get-Content -LiteralPath $process_log | Select-Object -Last 1 | ConvertFrom-Json
+    Assert-True ($version_record.ProcessId -eq 81) 'Version process ID was not recorded.'
+
+    $script:missing_exit_version_process = $null
+    $missing_exit_version_launcher = {
+        param($Parameters)
+        Set-Content -LiteralPath $Parameters.RedirectStandardOutput -Value ''
+        Set-Content -LiteralPath $Parameters.RedirectStandardError -Value ''
+        $script:missing_exit_version_process = [pscustomobject]@{ Id = 82; ExitCode = $null; Disposed = $false }
+        $script:missing_exit_version_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+            $this.Disposed = $true
+        }
+        return $script:missing_exit_version_process
+    }
+    $missing_version_exit_reported = $false
+    try {
+        Invoke-CheckedGnuCashVersion -FilePath 'fixture-gnucash-no-exit.exe' `
+            -StandardOutputPath $version_stdout -StandardErrorPath $version_stderr `
+            -ProcessResultsPath $process_log -ProcessLauncher $missing_exit_version_launcher | Out-Null
+    }
+    catch {
+        $missing_version_exit_reported = $_.Exception.Message -eq `
+            'GnuCash --version did not provide a process exit code.'
+    }
+    Assert-True $missing_version_exit_reported 'A missing version process exit code was accepted.'
+    Assert-True $script:missing_exit_version_process.Disposed `
+        'Version process handle was not disposed after a missing exit code.'
+    $missing_version_record = Get-Content -LiteralPath $process_log | Select-Object -Last 1 | ConvertFrom-Json
+    Assert-True ($missing_version_record.ProcessId -eq 82) `
+        'Version process ID was not recorded for a missing exit code.'
+
+    $script:failed_version_process = $null
+    $failed_version_launcher = {
+        param($Parameters)
+        Set-Content -LiteralPath $Parameters.RedirectStandardOutput -Value ''
+        Set-Content -LiteralPath $Parameters.RedirectStandardError -Value 'fixture version failure'
+        $script:failed_version_process = [pscustomobject]@{ Id = 83; ExitCode = 23; Disposed = $false }
+        $script:failed_version_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+            $this.Disposed = $true
+        }
+        return $script:failed_version_process
+    }
+    $failed_version_reported = $false
+    try {
+        Invoke-CheckedGnuCashVersion -FilePath 'fixture-gnucash-fails.exe' `
+            -StandardOutputPath $version_stdout -StandardErrorPath $version_stderr `
+            -ProcessResultsPath $process_log -ProcessLauncher $failed_version_launcher | Out-Null
+    }
+    catch {
+        $failed_version_reported = $_.Exception.Message -like '*failed with exit code 23:*' -and `
+            $_.Exception.Message -like '*fixture version failure*'
+    }
+    Assert-True $failed_version_reported 'A non-zero version exit code and stderr were not preserved.'
+    Assert-True $script:failed_version_process.Disposed `
+        'Version process handle was not disposed after a non-zero exit code.'
+    $failed_version_record = Get-Content -LiteralPath $process_log | Select-Object -Last 1 | ConvertFrom-Json
+    Assert-True ($failed_version_record.ProcessId -eq 83 -and $failed_version_record.ExitCode -eq 23) `
+        'Non-zero version process result was not recorded with its process ID.'
+
     $install_root = Join-Path $test_root 'synthetic-install'
     $nested = Join-Path $install_root 'share\fixture'
     New-Item -ItemType Directory -Path $nested -Force | Out-Null
@@ -103,6 +187,49 @@ try {
     Assert-True (!$missing) 'Missing installation root observation was true.'
     $observations = @(Get-Content -LiteralPath $observation_path | ForEach-Object { $_ | ConvertFrom-Json })
     Assert-True ($observations.Count -eq 2) 'Both root-state observations were not recorded.'
+
+    $owner_process = [pscustomobject]@{
+        Id = 42
+        ProcessName = 'fixture-owner'
+        Disposed = $false
+        Modules = @(
+            [pscustomobject]@{ FileName = (Join-Path $install_root 'bin\locked.dll') }
+            [pscustomobject]@{ FileName = "${install_root}-shadow\bin\not-an-owner.dll" }
+            [pscustomobject]@{ FileName = (Join-Path $test_root 'outside.dll') }
+        )
+    }
+    $owner_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+        $this.Disposed = $true
+    }
+    $inaccessible_process = [pscustomobject]@{ Id = 43; ProcessName = 'fixture-inaccessible' }
+    $inaccessible_process | Add-Member -MemberType ScriptProperty -Name Modules -Value {
+        throw 'fixture module inspection failed'
+    }
+    $owners_path = Join-Path $test_root 'process-owners.json'
+    $owner_result = Write-InstallPayloadProcessInventory -Root $install_root -OutputPath $owners_path `
+        -Processes @($owner_process, $inaccessible_process)
+    Assert-True ($owner_result.OwnerCount -eq 1) 'Install-root module owner was not mapped exactly once.'
+    Assert-True ($owner_result.InspectionErrorCount -eq 1) 'Module inspection failure was not recorded.'
+    $owner_diagnostics = Get-Content -LiteralPath $owners_path -Raw | ConvertFrom-Json
+    Assert-True (!$owner_diagnostics.InspectionComplete) `
+        'Incomplete process inspection was incorrectly reported as complete.'
+    Assert-True ($owner_diagnostics.Owners[0].ProcessId -eq 42) 'Module owner process ID was not recorded.'
+    Assert-True (!$owner_process.Disposed) 'Borrowed injected process object was disposed.'
+
+    $owned_process = [pscustomobject]@{
+        Id = 44
+        ProcessName = 'fixture-owned'
+        Disposed = $false
+        Modules = @()
+    }
+    $owned_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+        $this.Disposed = $true
+    }
+    $owned_enumerator = { return $owned_process }.GetNewClosure()
+    Write-InstallPayloadProcessInventory -Root $install_root `
+        -OutputPath (Join-Path $test_root 'owned-processes.json') `
+        -ProcessEnumerator $owned_enumerator | Out-Null
+    Assert-True $owned_process.Disposed 'Process object created by the inventory was not disposed.'
 
     $registration_path = Join-Path $test_root 'registrations.json'
     Write-ProductRegistrationDiagnostics -Registrations @([pscustomobject]@{
