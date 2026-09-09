@@ -179,7 +179,8 @@ function Write-InstallPayloadProcessInventory {
         [Parameter(Mandatory)][string]$Root,
         [Parameter(Mandatory)][string]$OutputPath,
         [object[]]$Processes,
-        [scriptblock]$ProcessEnumerator
+        [scriptblock]$ProcessEnumerator,
+        [scriptblock]$ModuleEnumerator
     )
 
     $dispose_processes = !$PSBoundParameters.ContainsKey('Processes')
@@ -210,10 +211,30 @@ function Write-InstallPayloadProcessInventory {
         }
         foreach ($process in @($Processes)) {
             try {
+                if ($ModuleEnumerator) {
+                    $modules = & $ModuleEnumerator $process
+                }
+                elseif ($process -is [System.Diagnostics.Process]) {
+                    $modules = $process.get_Modules()
+                }
+                else {
+                    $modules = $process.Modules
+                }
+                if ($null -eq $modules) {
+                    continue
+                }
                 $process_id = $process.Id
                 $process_name = $process.ProcessName
-                foreach ($module in @($process.Modules)) {
-                    $module_path = [string]$module.FileName
+                foreach ($module in @($modules)) {
+                    if ($null -eq $module) {
+                        continue
+                    }
+                    $file_name = $module.PSObject.Properties['FileName']
+                    if ($null -eq $file_name) {
+                        throw [InvalidOperationException]::new(
+                            'Module record does not expose a FileName property.')
+                    }
+                    $module_path = [string]$file_name.Value
                     if ([string]::IsNullOrWhiteSpace($module_path)) {
                         continue
                     }

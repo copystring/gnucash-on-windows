@@ -42,6 +42,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & ./inno_setup/tests/InstallerArchitecture.Tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installer diagnostic error preservation
+        shell: pwsh
+        run: |
+          & ./inno_setup/tests/InstallerDiagnostics.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Inno Setup for source fixtures
         shell: pwsh
         run: |

@@ -201,20 +201,92 @@ try {
     $owner_process | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
         $this.Disposed = $true
     }
-    $inaccessible_process = [pscustomobject]@{ Id = 43; ProcessName = 'fixture-inaccessible' }
-    $inaccessible_process | Add-Member -MemberType ScriptProperty -Name Modules -Value {
-        throw 'fixture module inspection failed'
-    }
+    $inaccessible_process = [pscustomobject]@{ Id = 43; ProcessName = 'fixture-inaccessible'; Modules = @() }
+    $module_enumerator = {
+        param($process)
+        if ($process.Id -eq 43) {
+            throw 'fixture module inspection failed'
+        }
+        return $process.Modules
+    }.GetNewClosure()
     $owners_path = Join-Path $test_root 'process-owners.json'
     $owner_result = Write-InstallPayloadProcessInventory -Root $install_root -OutputPath $owners_path `
-        -Processes @($owner_process, $inaccessible_process)
+        -Processes @($owner_process, $inaccessible_process) -ModuleEnumerator $module_enumerator
     Assert-True ($owner_result.OwnerCount -eq 1) 'Install-root module owner was not mapped exactly once.'
     Assert-True ($owner_result.InspectionErrorCount -eq 1) 'Module inspection failure was not recorded.'
     $owner_diagnostics = Get-Content -LiteralPath $owners_path -Raw | ConvertFrom-Json
     Assert-True (!$owner_diagnostics.InspectionComplete) `
         'Incomplete process inspection was incorrectly reported as complete.'
     Assert-True ($owner_diagnostics.Owners[0].ProcessId -eq 42) 'Module owner process ID was not recorded.'
+    Assert-True ($owner_diagnostics.InspectionErrors[0].Error -eq 'fixture module inspection failed') `
+        'The original module inspection exception was not preserved.'
     Assert-True (!$owner_process.Disposed) 'Borrowed injected process object was disposed.'
+
+    $empty_modules_process = [pscustomobject]@{
+        Id = 45
+        ProcessName = 'fixture-empty-modules'
+        Modules = @()
+    }
+    $null_modules_process = [pscustomobject]@{
+        Id = 46
+        ProcessName = 'fixture-null-modules'
+        Modules = $null
+    }
+    $missing_file_name_process = [pscustomobject]@{
+        Id = 47
+        ProcessName = 'fixture-malformed-module'
+        Modules = @([pscustomobject]@{ ModuleName = 'missing-filename' })
+    }
+    $module_shape_path = Join-Path $test_root 'process-module-shapes.json'
+    $module_shape_result = Write-InstallPayloadProcessInventory -Root $install_root `
+        -OutputPath $module_shape_path `
+        -Processes @($empty_modules_process, $null_modules_process, $missing_file_name_process)
+    Assert-True ($module_shape_result.OwnerCount -eq 0) `
+        'Empty or null module results were incorrectly recorded as owners.'
+    Assert-True ($module_shape_result.InspectionErrorCount -eq 1) `
+        'Only the malformed module record should make the inspection incomplete.'
+    $module_shape_diagnostics = Get-Content -LiteralPath $module_shape_path -Raw | ConvertFrom-Json
+    Assert-True (!$module_shape_diagnostics.InspectionComplete) `
+        'A malformed module record was incorrectly reported as complete.'
+    Assert-True ($module_shape_diagnostics.InspectionErrors[0].ProcessId -eq 47) `
+        'The malformed module record was not attributed to its process.'
+    Assert-True ($module_shape_diagnostics.InspectionErrors[0].Error -eq `
+        'Module record does not expose a FileName property.') `
+        'The malformed module record did not retain its explicit diagnostic.'
+
+    $unbound_process = [System.Diagnostics.Process]::new()
+    try {
+        $legacy_property_error = $null
+        try {
+            foreach ($module in @($unbound_process.Modules)) {
+                $null = [string]$module.FileName
+            }
+        }
+        catch {
+            $legacy_property_error = $_.Exception.Message
+        }
+        Assert-True ($legacy_property_error -match 'FileName') `
+            'The legacy property access did not reproduce the masked FileName diagnostic.'
+
+        $native_getter_path = Join-Path $test_root 'process-native-getter.json'
+        $native_getter_result = Write-InstallPayloadProcessInventory -Root $install_root `
+            -OutputPath $native_getter_path -Processes @($unbound_process)
+        Assert-True ($native_getter_result.OwnerCount -eq 0) `
+            'An unconnected process was incorrectly recorded as an owner.'
+        Assert-True ($native_getter_result.InspectionErrorCount -eq 1) `
+            'The native Process.Modules getter failure was not recorded.'
+        $native_getter_diagnostics = Get-Content -LiteralPath $native_getter_path -Raw | ConvertFrom-Json
+        Assert-True (!$native_getter_diagnostics.InspectionComplete) `
+            'A native Process.Modules getter failure was incorrectly reported as complete.'
+        Assert-True ($native_getter_diagnostics.InspectionErrors[0].Error -match `
+            'No process is associated with this object') `
+            'The native Process.Modules getter failure was not preserved.'
+        Assert-True ($native_getter_diagnostics.InspectionErrors[0].Error -notmatch 'FileName') `
+            'The native Process.Modules getter failure was masked as a FileName diagnostic.'
+    }
+    finally {
+        $unbound_process.Dispose()
+    }
 
     $owned_process = [pscustomobject]@{
         Id = 44
