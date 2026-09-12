@@ -38,6 +38,15 @@ typedef struct
 
 static void finish_probe (ProbeState *state, gboolean success);
 
+/* Deliberately global and not inlined: the Linux GDB diagnostic breaks here
+ * immediately after creating the one Popover whose public GObject ref_count
+ * is watched through the final weak-reference check. */
+G_GNUC_NO_INLINE void
+gtk_popover_probe_refcount_marker (GObject *object)
+{
+    g_return_if_fail (G_IS_OBJECT (object));
+}
+
 static void
 clear_frame_wait (ProbeState *state)
 {
@@ -95,6 +104,7 @@ new_popover (ProbeState *state)
     GtkPopover *popover = GTK_POPOVER (gtk_popover_new ());
     GtkWidget *menu = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 
+    gtk_popover_probe_refcount_marker (G_OBJECT (popover));
     g_assert_true (gtk_popover_get_autohide (popover));
     for (guint index = 0; index < 4; index++)
     {

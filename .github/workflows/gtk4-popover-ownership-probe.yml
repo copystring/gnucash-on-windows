@@ -268,7 +268,7 @@ jobs:
           run: |
             sudo apt-get update
             sudo apt-get install --yes --no-install-recommends \
-              build-essential cmake file libgtk-4-dev ninja-build pkg-config \
+              build-essential cmake file gdb libgtk-4-dev ninja-build pkg-config \
               xauth xvfb
 
         - name: Verify Ubuntu GTK4 environment
@@ -315,7 +315,7 @@ jobs:
 
             {
               cmake -S "$source_dir" -B "$build_dir" -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
               cmake --build "$build_dir" --verbose
             } 2>&1 | tee "$diagnostics/build.txt"
 
@@ -383,6 +383,75 @@ jobs:
             if [[ "${#failures[@]}" -ne 0 ]]; then
               printf 'GTK popover ownership probe failures: %s\n' \
                 "${failures[*]}" >&2
+              exit 1
+            fi
+
+        - name: Trace the retained Linux Popover reference with GDB
+          if: ${{ always() }}
+          env:
+            GDK_BACKEND: x11
+            LIBGL_ALWAYS_SOFTWARE: '1'
+          run: |
+            set -euo pipefail
+            diagnostics="$RUNNER_TEMP/gtk-popover-probe-diagnostics"
+            executable="$RUNNER_TEMP/gtk-popover-probe-build/gtk-popover-ownership-probe"
+            gdb_commands="$diagnostics/retained-normal-close-refcount.gdb"
+            gdb_stdout="$diagnostics/retained-normal-close-gdb.stdout.txt"
+            gdb_stderr="$diagnostics/retained-normal-close-gdb.stderr.txt"
+            gdb_exit="$diagnostics/retained-normal-close-gdb.exit.txt"
+
+            test -x "$executable"
+            command -v gdb
+            cat >"$gdb_commands" <<'GDB'
+            set pagination off
+            set confirm off
+            set debuginfod enabled off
+            set breakpoint pending off
+            set can-use-hw-watchpoints 1
+            break gtk_popover_probe_refcount_marker
+            run
+            set $watched_popover = object
+            printf "POPOVER_GDB_MARKER object=%p ref_count=%u\n", $watched_popover, ((GObject *) $watched_popover)->ref_count
+            watch -location ((GObject *) $watched_popover)->ref_count
+            commands
+              printf "POPOVER_REFCOUNT_TRANSITION object=%p ref_count=%u\n", $watched_popover, ((GObject *) $watched_popover)->ref_count
+              bt 12
+              continue
+            end
+            continue
+            GDB
+
+            set +e
+            timeout --signal=KILL --kill-after=2s 120s \
+              xvfb-run --auto-servernum --server-args='-screen 0 1024x768x24' \
+              gdb --batch --return-child-result --command="$gdb_commands" \
+                --args "$executable" >"$gdb_stdout" 2>"$gdb_stderr"
+            gdb_status=$?
+            set -e
+
+            {
+              printf 'mode=retained-normal-close\n'
+              printf 'gdb_exit_code=%s\n' "$gdb_status"
+            } | tee "$gdb_exit"
+            cat "$gdb_stdout"
+            cat "$gdb_stderr"
+
+            if [[ "$gdb_status" -eq 124 || "$gdb_status" -eq 137 ]]; then
+              printf 'GDB retained-normal-close trace timed out.\n' >&2
+              exit 1
+            fi
+            if [[ "$gdb_status" -ne 1 ]]; then
+              printf 'GDB trace did not preserve the retained-normal-close failure: exit=%s\n' \
+                "$gdb_status" >&2
+              exit 1
+            fi
+            grep -q 'Hardware watchpoint' "$gdb_stdout"
+            grep -q 'POPOVER_GDB_MARKER object=' "$gdb_stdout"
+            grep -q 'POPOVER_REFCOUNT_TRANSITION object=' "$gdb_stdout"
+            # Exit 1 alone also covers setup/watchdog failures and is insufficient.
+            grep -q 'popover still alive after test-ref release' "$gdb_stderr"
+            if grep -q 'No required after-paint boundary' "$gdb_stderr"; then
+              printf 'Probe watchdog expired under GDB; no ownership diagnosis.\n' >&2
               exit 1
             fi
 

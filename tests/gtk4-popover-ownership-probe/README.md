@@ -36,6 +36,20 @@ the GTK/GLib versions, executable architecture, GTK4 runtime dependency, full
 stdout/stderr, and each process exit status. Any failed or timed-out mode fails
 its job after the other modes have also produced diagnostics.
 
+On Linux, the isolated probe is built as `RelWithDebInfo`. After the unchanged
+three-mode baseline, the workflow separately reruns only the known failing
+`retained-normal-close` case under batch GDB. A deliberately global,
+non-inlined marker immediately after the Popover creation supplies its public
+`GObject *` to GDB; GDB must install a hardware watchpoint on
+`GObject.ref_count`, record every observed transition with a twelve-frame
+backtrace, and retain the native exit `1`. Exit `1` is not sufficient: the
+diagnostic also requires the exact remaining-Popover message and rejects the
+probe's inner two-second after-paint watchdog, which would be a timing/setup
+failure rather than ownership evidence. The outer trace is capped at 120
+seconds and is an additional artifact: it never converts the preceding
+baseline failure to success or weakens fatal GTK, GDK, or GLib-GObject
+diagnostics.
+
 The Windows job pins the same GTK4 4.24.0-1 and GLib 2.90.0-1 package contract
 as the IME reproducer. The Linux job records the distribution-provided GTK4 and
 GLib versions for an independent comparison. Neither job accepts a GTK3-linked
