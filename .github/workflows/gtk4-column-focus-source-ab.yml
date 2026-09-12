@@ -1,0 +1,95 @@
+name: GTK4 ColumnView source A/B
+
+on:
+  push:
+    branches:
+      - fix/gtk4-ime-reproducer-20260912
+    paths:
+      - .github/workflows/gtk4-column-focus-source-ab.yml
+      - tests/gtk4-column-focus-ownership-probe/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gtk4-column-focus-source-ab-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-ab:
+    if: >-
+      github.repository == 'copystring/gnucash-on-windows' &&
+      github.ref == 'refs/heads/fix/gtk4-ime-reproducer-20260912'
+    name: GTK 4.22.4 source (${{ matrix.variant }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - baseline
+          - patched
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tests/gtk4-column-focus-ownership-probe
+          sparse-checkout-cone-mode: true
+
+      - name: Install GTK source-build and probe dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            cmake \
+            file \
+            git \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libcairo2-dev \
+            libdrm-dev \
+            libepoxy-dev \
+            libfontconfig-dev \
+            libfribidi-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev \
+            libjpeg-dev \
+            libpango1.0-dev \
+            libpng-dev \
+            libtiff-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxdamage-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxrender-dev \
+            meson \
+            ninja-build \
+            pkg-config \
+            sassc \
+            xauth \
+            xvfb
+
+      - name: Build GTK source and run the ownership probe
+        shell: bash
+        env:
+          NINJA_JOBS: '3'
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/tests/gtk4-column-focus-ownership-probe/run-source-ab.sh" \
+            "${{ matrix.variant }}"
+
+      - name: Preserve source-build and probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gtk4-column-focus-source-${{ matrix.variant }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/gtk-column-focus-source-${{ matrix.variant }}-diagnostics
+          if-no-files-found: error
+          retention-days: 14
