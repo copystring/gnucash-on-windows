@@ -147,17 +147,27 @@ function bash-command() {
     }
     $process_info = New-Object Diagnostics.ProcessStartInfo
     $process_info.FileName = $bash_path
-    $process_info.Arguments = '-s'
+    $process_info.Arguments = '-e -s'
     $process_info.UseShellExecute = $false
     $process_info.CreateNoWindow = $true
     $process_info.RedirectStandardInput = $true
     $process = [Diagnostics.Process]::Start($process_info)
-    # Bash reads commands from stdin. Force LF so Windows StreamWriter defaults
-    # cannot append a carriage return to the shell input.
-    $process.StandardInput.NewLine = "`n"
-    $process.StandardInput.WriteLine('export PATH=/usr/bin')
-    $process.StandardInput.WriteLine($command)
-    $process.StandardInput.Close()
+    # Windows PowerShell's .NET Framework ProcessStartInfo has no
+    # StandardInputEncoding. The initial StandardInput writer must stay unused:
+    # its default UTF-8 preamble would make Bash receive a BOM before `export`.
+    # This replacement writes UTF-8 without a preamble and LF line endings.
+    $input_stream = $process.StandardInput.BaseStream
+    $input_encoding = New-Object System.Text.UTF8Encoding($false)
+    $input_writer = New-Object System.IO.StreamWriter($input_stream, $input_encoding)
+    $input_writer.NewLine = "`n"
+    try {
+        $input_writer.WriteLine('export PATH=/usr/bin')
+        $input_writer.WriteLine($command)
+        $input_writer.Flush()
+    }
+    finally {
+        $input_writer.Close()
+    }
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) {
         throw "Shell command failed with exit code $($process.ExitCode): $command"

@@ -134,18 +134,33 @@ try {
 
     $git_bash = 'C:\Program Files\Git\bin\bash.exe'
     Assert-True (Test-Path -LiteralPath $git_bash -PathType Leaf) 'Git Bash is required for the quoting fixture.'
-    $space_root = Join-Path $test_root 'script root'
+    # Construct Unicode explicitly: Windows PowerShell reads BOM-less scripts
+    # with the legacy ANSI encoding, unlike PowerShell 7.
+    $space_root = Join-Path $test_root ('script root ' + [char]0x00FC)
     New-Item -ItemType Directory -Path $space_root | Out-Null
     $marker = Join-Path $space_root 'quoted-marker'
     $bash_path = $git_bash
     $space_root_unix = make-unixpath -path $space_root
     $marker_unix = make-unixpath -path $marker
-    bash-command -command "cd ""$space_root_unix"" && printf quoted > ""$marker_unix"""
+    bash-command -command "test ""`$PATH"" = /usr/bin && cd ""$space_root_unix"" && printf quoted > ""$marker_unix"""
     Assert-True ((Get-Content -LiteralPath $marker -Raw) -eq 'quoted') `
         'Script-relative Bash command failed for a path containing spaces.'
 
-    $source_root = Join-Path $test_root 'source root'
-    $destination_root = Join-Path $test_root 'destination root'
+    $failed_command_marker = Join-Path $space_root 'unexpected-after-failure'
+    $failed_command_marker_unix = make-unixpath -path $failed_command_marker
+    $command_rejected = $false
+    try {
+        bash-command -command "false; printf unexpected > ""$failed_command_marker_unix"""
+    }
+    catch {
+        $command_rejected = $_.Exception.Message -match 'Shell command failed with exit code 1:'
+    }
+    Assert-True $command_rejected 'Bash continued after a failed command.'
+    Assert-True (!(Test-Path -LiteralPath $failed_command_marker)) `
+        'Bash executed a command after an earlier failure.'
+
+    $source_root = Join-Path $test_root ('source root ' + [char]0x00E4)
+    $destination_root = Join-Path $test_root ('destination root ' + [char]0x00F6)
     New-Item -ItemType Directory -Path $source_root, $destination_root | Out-Null
     $source_file = Join-Path $source_root 'htmlhelp.h'
     $destination_file = Join-Path $destination_root 'htmlhelp.h'
