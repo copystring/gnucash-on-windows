@@ -1,0 +1,245 @@
+name: GTK4 ColumnView focused-column baseline
+
+on:
+    push:
+        branches: [fix/gtk4-ime-reproducer-20260912]
+        paths:
+            - .github/workflows/gtk4-column-focus-ownership-probe.yml
+            - tests/gtk4-column-focus-ownership-probe/**
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: gtk4-column-focus-ownership-probe-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    ubuntu_xvfb:
+        name: Reproduce focused-column ownership on Ubuntu 26.04
+        if: github.repository == 'copystring/gnucash-on-windows'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        steps:
+        - name: Check out probe source
+          uses: actions/checkout@v7
+          with:
+            sparse-checkout: |
+                tests/gtk4-column-focus-ownership-probe
+
+        - name: Install GTK4 and Xvfb dependencies
+          run: |
+            set -euo pipefail
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends \
+              build-essential cmake file libgtk-4-dev ninja-build pkg-config \
+              xauth xvfb
+
+        - name: Record Ubuntu GTK4 environment
+          run: |
+            set -euo pipefail
+            diagnostics="$RUNNER_TEMP/gtk-column-focus-ownership-linux"
+            mkdir -p "$diagnostics"
+            . /etc/os-release
+            {
+              printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
+              printf 'RUNNER_ARCH=%s\n' "$RUNNER_ARCH"
+              printf 'ImageOS=%s\n' "${ImageOS:-unknown}"
+              printf 'ImageVersion=%s\n' "${ImageVersion:-unknown}"
+              printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
+              printf 'distribution=%s\n' "$ID"
+              printf 'distribution_version=%s\n' "$VERSION_ID"
+              printf 'uname_machine=%s\n' "$(uname -m)"
+              printf 'gtk4_pkg_config=%s\n' "$(pkg-config --modversion gtk4)"
+              printf 'glib2_pkg_config=%s\n' "$(pkg-config --modversion glib-2.0)"
+              dpkg-query -W -f='libgtk-4-dev=${Version}\n' libgtk-4-dev
+              dpkg-query -W -f='libglib2.0-dev=${Version}\n' libglib2.0-dev
+              printf 'cc=%s\n' "$(cc --version | head -n 1)"
+              printf 'cmake=%s\n' "$(cmake --version | head -n 1)"
+              printf 'ninja=%s\n' "$(ninja --version)"
+            } | tee "$diagnostics/environment.txt"
+            [[ "$RUNNER_OS" == 'Linux' ]]
+            [[ "$RUNNER_ARCH" == 'X64' ]]
+            [[ "$ID" == 'ubuntu' ]]
+            [[ "$VERSION_ID" == '26.04' ]]
+            [[ "$(uname -m)" == 'x86_64' ]]
+
+        - name: Build baseline probe and record architecture
+          run: |
+            set -euo pipefail
+            diagnostics="$RUNNER_TEMP/gtk-column-focus-ownership-linux"
+            source_dir="$GITHUB_WORKSPACE/tests/gtk4-column-focus-ownership-probe"
+            build_dir="$RUNNER_TEMP/gtk-column-focus-ownership-build"
+            {
+              cmake -S "$source_dir" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release
+              cmake --build "$build_dir" --verbose
+            } 2>&1 | tee "$diagnostics/build.txt"
+            executable="$build_dir/gtk-column-focus-ownership-probe"
+            test -x "$executable"
+            file "$executable" | tee "$diagnostics/executable-architecture.txt"
+            ldd "$executable" | tee "$diagnostics/imported-shared-objects.txt"
+            grep -Eq 'ELF 64-bit.*x86-64' "$diagnostics/executable-architecture.txt"
+            grep -Eq 'libgtk-4\.so' "$diagnostics/imported-shared-objects.txt"
+
+        - name: Run unpatched baseline under Xvfb
+          env:
+            GDK_BACKEND: x11
+            LIBGL_ALWAYS_SOFTWARE: '1'
+          run: |
+            set -euo pipefail
+            diagnostics="$RUNNER_TEMP/gtk-column-focus-ownership-linux"
+            executable="$RUNNER_TEMP/gtk-column-focus-ownership-build/gtk-column-focus-ownership-probe"
+            stdout="$diagnostics/baseline.stdout.txt"
+            stderr="$diagnostics/baseline.stderr.txt"
+            set +e
+            timeout --signal=KILL --kill-after=2s 15s \
+              xvfb-run --auto-servernum --server-args='-screen 0 1024x768x24' \
+              "$executable" >"$stdout" 2>"$stderr"
+            native_exit=$?
+            set -e
+            timed_out=false
+            if [[ "$native_exit" -eq 124 || "$native_exit" -eq 137 ]]; then
+              timed_out=true
+            fi
+            {
+              printf 'native_exit=%s\n' "$native_exit"
+              printf 'timed_out=%s\n' "$timed_out"
+            } | tee "$diagnostics/baseline.exit.txt"
+            cat "$stdout"
+            cat "$stderr"
+            exit "$native_exit"
+
+        - name: Upload Linux baseline diagnostics
+          if: ${{ always() }}
+          uses: actions/upload-artifact@v7
+          with:
+            name: gtk4-column-focus-baseline-linux-${{ github.run_id }}-${{ github.run_attempt }}
+            path: ${{ runner.temp }}/gtk-column-focus-ownership-linux
+            if-no-files-found: error
+            compression-level: 6
+
+    windows_ucrt64:
+        name: Reproduce focused-column ownership on Windows UCRT64
+        if: github.repository == 'copystring/gnucash-on-windows'
+        runs-on: windows-latest
+        timeout-minutes: 10
+        defaults:
+            run:
+                shell: pwsh
+        steps:
+        - name: Set up isolated UCRT64 GTK4 toolchain
+          uses: msys2/setup-msys2@v2
+          with:
+            msystem: UCRT64
+            update: true
+            pacboy: toolchain:p cmake:p ninja:p gtk4:p
+
+        - name: Check out probe source
+          uses: actions/checkout@v7
+          with:
+            sparse-checkout: |
+                tests/gtk4-column-focus-ownership-probe
+
+        - name: Record UCRT64 GTK4 environment
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            diagnostics="$(cygpath -u "$RUNNER_TEMP")/gtk-column-focus-ownership-windows"
+            mkdir -p "$diagnostics"
+            gtk_package='mingw-w64-ucrt-x86_64-gtk4'
+            glib_package='mingw-w64-ucrt-x86_64-glib2'
+            {
+              printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
+              printf 'RUNNER_ARCH=%s\n' "$RUNNER_ARCH"
+              printf 'ImageOS=%s\n' "${ImageOS:-unknown}"
+              printf 'ImageVersion=%s\n' "${ImageVersion:-unknown}"
+              printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
+              printf 'MSYSTEM=%s\n' "$MSYSTEM"
+              printf 'MINGW_PACKAGE_PREFIX=%s\n' "$MINGW_PACKAGE_PREFIX"
+              printf 'uname_machine=%s\n' "$(uname -m)"
+              printf '%s=%s\n' "$gtk_package" "$(pacman -Q "$gtk_package" | awk '{ print $2 }')"
+              printf '%s=%s\n' "$glib_package" "$(pacman -Q "$glib_package" | awk '{ print $2 }')"
+              printf 'gtk4_pkg_config=%s\n' "$(pkg-config --modversion gtk4)"
+              printf 'glib2_pkg_config=%s\n' "$(pkg-config --modversion glib-2.0)"
+              printf 'cc=%s\n' "$(cc --version | head -n 1)"
+              printf 'cmake=%s\n' "$(cmake --version | head -n 1)"
+              printf 'ninja=%s\n' "$(ninja --version)"
+            } | tee "$diagnostics/environment.txt"
+            [[ "$RUNNER_OS" == 'Windows' ]]
+            [[ "$RUNNER_ARCH" == 'X64' ]]
+            [[ "$MSYSTEM" == 'UCRT64' ]]
+            [[ "$MINGW_PACKAGE_PREFIX" == 'mingw-w64-ucrt-x86_64' ]]
+            [[ "$(uname -m)" == 'x86_64' ]]
+
+        - name: Build baseline probe and record architecture
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            diagnostics="$(cygpath -u "$RUNNER_TEMP")/gtk-column-focus-ownership-windows"
+            source_dir="$(cygpath -u "$GITHUB_WORKSPACE")/tests/gtk4-column-focus-ownership-probe"
+            build_dir="$(cygpath -u "$RUNNER_TEMP")/gtk-column-focus-ownership-build"
+            {
+              cmake -S "$source_dir" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release
+              cmake --build "$build_dir" --verbose
+            } 2>&1 | tee "$diagnostics/build.txt"
+            executable="$build_dir/gtk-column-focus-ownership-probe.exe"
+            test -x "$executable"
+            objdump -f "$executable" | tee "$diagnostics/executable-architecture.txt"
+            objdump -p "$executable" |
+              sed -n 's/^[[:space:]]*DLL Name:[[:space:]]*//p' |
+              tee "$diagnostics/imported-dlls.txt"
+            grep -q 'architecture: i386:x86-64' "$diagnostics/executable-architecture.txt"
+            grep -Eqi '^libgtk-4-[0-9]+\.dll$' "$diagnostics/imported-dlls.txt"
+
+        - name: Run unpatched baseline and preserve native result
+          run: |
+            $ErrorActionPreference = 'Stop'
+            $diagnostics = Join-Path $Env:RUNNER_TEMP 'gtk-column-focus-ownership-windows'
+            $executable = Join-Path $Env:RUNNER_TEMP `
+                'gtk-column-focus-ownership-build\gtk-column-focus-ownership-probe.exe'
+            $ucrtPrefixOutput = msys2 -c 'cygpath -w $MSYSTEM_PREFIX'
+            if ($LASTEXITCODE -ne 0) {
+                throw "Cannot resolve the UCRT64 runtime prefix: exit $LASTEXITCODE"
+            }
+            $ucrtPrefix = ($ucrtPrefixOutput -join "`n").Trim()
+            $Env:PATH = @(
+                (Join-Path $ucrtPrefix 'bin')
+                (Join-Path $Env:SystemRoot 'System32')
+                $Env:SystemRoot
+            ) -join [IO.Path]::PathSeparator
+            $stdout = Join-Path $diagnostics 'baseline.stdout.txt'
+            $stderr = Join-Path $diagnostics 'baseline.stderr.txt'
+            $process = Start-Process -FilePath $executable -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            $timedOut = -not $process.WaitForExit(15000)
+            if ($timedOut) {
+                $process.Kill($true)
+                $process.WaitForExit()
+            }
+            $exitCode = $process.ExitCode
+            $exitBytes = [BitConverter]::GetBytes([int32] $exitCode)
+            $exitHex = '0x{0:X8}' -f [BitConverter]::ToUInt32($exitBytes, 0)
+            [pscustomobject] [ordered] @{
+                nativeExit = $exitCode
+                nativeExitHex = $exitHex
+                timedOut = $timedOut
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $diagnostics 'baseline.json') -Encoding utf8
+            Get-Content -LiteralPath $stdout | ForEach-Object { Write-Host $_ }
+            Get-Content -LiteralPath $stderr | ForEach-Object { Write-Host $_ }
+            Write-Host "baseline native exit: $exitCode ($exitHex), timedOut=$timedOut"
+            if ($timedOut) {
+                throw 'GTK ColumnView baseline timed out.'
+            }
+            if ($exitCode -ne 0) {
+                throw "GTK ColumnView baseline ended nonzero: native exit $exitCode ($exitHex)."
+            }
+
+        - name: Upload Windows baseline diagnostics
+          if: ${{ always() }}
+          uses: actions/upload-artifact@v7
+          with:
+            name: gtk4-column-focus-baseline-windows-${{ github.run_id }}-${{ github.run_attempt }}
+            path: ${{ runner.temp }}/gtk-column-focus-ownership-windows
+            if-no-files-found: error
+            compression-level: 6
