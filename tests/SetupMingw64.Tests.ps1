@@ -64,6 +64,21 @@ try {
     # bootstrap side effects. The two replacements below exercise the actual
     # install-package path without a network transfer or child process.
     . $setup_script
+    Assert-True ((quote-windows-command-line-argument '') -ceq '""') `
+        'Windows command-line quoting did not preserve an empty argument.'
+    Assert-True ((quote-windows-command-line-argument 'with space') -ceq '"with space"') `
+        'Windows command-line quoting did not preserve spaces.'
+    Assert-True ((quote-windows-command-line-argument 'alpha"beta') -ceq '"alpha\"beta"') `
+        'Windows command-line quoting did not escape an embedded quote.'
+    $backslashes_before_quote = 'alpha' + ('\' * 2) + '"beta'
+    $expected_backslashes_before_quote = '"alpha' + ('\' * 5) + '"beta"'
+    Assert-True ((quote-windows-command-line-argument $backslashes_before_quote) -ceq $expected_backslashes_before_quote) `
+        'Windows command-line quoting did not double backslashes before a quote.'
+    $trailing_backslashes = 'trailing' + ('\' * 2)
+    $expected_trailing_backslashes = '"trailing' + ('\' * 4) + '"'
+    Assert-True ((quote-windows-command-line-argument $trailing_backslashes) -ceq $expected_trailing_backslashes) `
+        'Windows command-line quoting did not double trailing backslashes.'
+
     $download_dir = $downloads
     $script:curl_exit_code = 0
     $script:curl_output_paths = @()

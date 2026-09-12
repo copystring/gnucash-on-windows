@@ -140,6 +140,30 @@ function install-package([string]$url, [string]$setup_args)
 }
 
 
+function quote-windows-command-line-argument([string]$value) {
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $value.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes++
+        }
+        elseif ($character -eq '"') {
+            [void]$builder.Append('\', ($backslashes * 2) + 1)
+            [void]$builder.Append('"')
+            $backslashes = 0
+        }
+        else {
+            [void]$builder.Append('\', $backslashes)
+            [void]$builder.Append($character)
+            $backslashes = 0
+        }
+    }
+    [void]$builder.Append('\', $backslashes * 2)
+    [void]$builder.Append('"')
+    $builder.ToString()
+}
+
 function bash-command() {
     param ([string]$command = "")
     if (!(test-path -path $bash_path)) {
@@ -147,27 +171,13 @@ function bash-command() {
     }
     $process_info = New-Object Diagnostics.ProcessStartInfo
     $process_info.FileName = $bash_path
-    $process_info.Arguments = '-e -s'
+    $bash_script = "export PATH=/usr/bin; $command"
+    # Start the native process directly so PowerShell 5.1 does not rebind its
+    # arguments and no UTF-8 stdin preamble can become part of the Bash script.
+    $process_info.Arguments = '-e -c ' + (quote-windows-command-line-argument $bash_script)
     $process_info.UseShellExecute = $false
     $process_info.CreateNoWindow = $true
-    $process_info.RedirectStandardInput = $true
     $process = [Diagnostics.Process]::Start($process_info)
-    # Windows PowerShell's .NET Framework ProcessStartInfo has no
-    # StandardInputEncoding. The initial StandardInput writer must stay unused:
-    # its default UTF-8 preamble would make Bash receive a BOM before `export`.
-    # This replacement writes UTF-8 without a preamble and LF line endings.
-    $input_stream = $process.StandardInput.BaseStream
-    $input_encoding = New-Object System.Text.UTF8Encoding($false)
-    $input_writer = New-Object System.IO.StreamWriter($input_stream, $input_encoding)
-    $input_writer.NewLine = "`n"
-    try {
-        $input_writer.WriteLine('export PATH=/usr/bin')
-        $input_writer.WriteLine($command)
-        $input_writer.Flush()
-    }
-    finally {
-        $input_writer.Close()
-    }
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) {
         throw "Shell command failed with exit code $($process.ExitCode): $command"
