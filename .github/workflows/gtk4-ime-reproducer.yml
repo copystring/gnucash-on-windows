@@ -1,0 +1,255 @@
+name: GTK4 Win32 IME reproducer
+
+on:
+    push:
+        branches: [fix/gtk4-ime-reproducer-20260912]
+        paths:
+            - .github/workflows/gtk4-ime-reproducer.yml
+            - tests/gtk4-ime-reproducer/**
+    workflow_dispatch:
+        inputs:
+            expected_gtk4_package_version:
+                description: Expected UCRT64 GTK4 package version
+                required: true
+                default: 4.24.0-1
+                type: string
+            expected_glib2_package_version:
+                description: Expected UCRT64 GLib package version
+                required: true
+                default: 2.90.0-1
+                type: string
+
+permissions:
+    contents: read
+
+concurrency:
+    group: gtk4-ime-reproducer-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    gtk4_ime_reproducer:
+        name: Reproduce focused-entry teardown on UCRT64
+        if: github.repository == 'copystring/gnucash-on-windows'
+        runs-on: windows-latest
+        timeout-minutes: 10
+        defaults:
+          run:
+            shell: pwsh
+        steps:
+        - name: Set up isolated UCRT64 GTK4 toolchain
+          uses: msys2/setup-msys2@v2
+          with:
+            msystem: UCRT64
+            update: true
+            pacboy: toolchain:p cmake:p ninja:p gtk4:p
+
+        - name: Check out reproducer source
+          uses: actions/checkout@v7
+          with:
+            sparse-checkout: |
+                tests/gtk4-ime-reproducer
+
+        - name: Verify GTK4-only package contract
+          shell: msys2 {0}
+          env:
+            EXPECTED_GTK4_PACKAGE_VERSION: ${{ inputs.expected_gtk4_package_version || '4.24.0-1' }}
+            EXPECTED_GLIB2_PACKAGE_VERSION: ${{ inputs.expected_glib2_package_version || '2.90.0-1' }}
+          run: |
+            set -euo pipefail
+            diagnostics="$(cygpath -u "$RUNNER_TEMP")/gtk-ime-reproducer-diagnostics"
+            mkdir -p "$diagnostics"
+
+            gtk_package='mingw-w64-ucrt-x86_64-gtk4'
+            glib_package='mingw-w64-ucrt-x86_64-glib2'
+            gtk_version="$(pacman -Q "$gtk_package" | awk '{ print $2 }')"
+            glib_version="$(pacman -Q "$glib_package" | awk '{ print $2 }')"
+            gtk_api_version="$(pkg-config --modversion gtk4)"
+            glib_api_version="$(pkg-config --modversion glib-2.0)"
+
+            {
+              printf 'RUNNER_OS=%s\n' "$RUNNER_OS"
+              printf 'RUNNER_ARCH=%s\n' "$RUNNER_ARCH"
+              printf 'ImageOS=%s\n' "${ImageOS:-unknown}"
+              printf 'ImageVersion=%s\n' "${ImageVersion:-unknown}"
+              printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
+              printf 'MSYSTEM=%s\n' "$MSYSTEM"
+              printf 'MINGW_PACKAGE_PREFIX=%s\n' "$MINGW_PACKAGE_PREFIX"
+              printf 'uname_machine=%s\n' "$(uname -m)"
+              printf '%s=%s\n' "$gtk_package" "$gtk_version"
+              printf '%s=%s\n' "$glib_package" "$glib_version"
+              printf 'expected_gtk4_package_version=%s\n' \
+                "$EXPECTED_GTK4_PACKAGE_VERSION"
+              printf 'expected_glib2_package_version=%s\n' \
+                "$EXPECTED_GLIB2_PACKAGE_VERSION"
+              printf 'gtk4_pkg_config=%s\n' "$gtk_api_version"
+              printf 'glib2_pkg_config=%s\n' "$glib_api_version"
+              printf 'gtk4_prefix=%s\n' "$(pkg-config --variable=prefix gtk4)"
+              printf 'cc=%s\n' "$(cc --version | head -n 1)"
+              printf 'cmake=%s\n' "$(cmake --version | head -n 1)"
+              printf 'ninja=%s\n' "$(ninja --version)"
+            } | tee "$diagnostics/environment.txt"
+
+            [[ "$RUNNER_OS" == 'Windows' ]]
+            [[ "$RUNNER_ARCH" == 'X64' ]]
+            [[ "$MSYSTEM" == 'UCRT64' ]]
+            [[ "$MINGW_PACKAGE_PREFIX" == 'mingw-w64-ucrt-x86_64' ]]
+            [[ "$(uname -m)" == 'x86_64' ]]
+            [[ "$gtk_version" == "$EXPECTED_GTK4_PACKAGE_VERSION" ]]
+            [[ "$glib_version" == "$EXPECTED_GLIB2_PACKAGE_VERSION" ]]
+            [[ "$gtk_api_version" == "${EXPECTED_GTK4_PACKAGE_VERSION%-*}" ]]
+            [[ "$glib_api_version" == "${EXPECTED_GLIB2_PACKAGE_VERSION%-*}" ]]
+
+            if pacman -Q mingw-w64-ucrt-x86_64-gtk3 >/dev/null 2>&1; then
+              echo 'Unexpected UCRT64 GTK3 package is installed.' >&2
+              exit 1
+            fi
+            if pkg-config --exists gtk+-3.0; then
+              echo 'Unexpected GTK3 pkg-config module is visible.' >&2
+              exit 1
+            fi
+            printf 'ucrt64_gtk3_package=absent\ngtk3_pkg_config=absent\n' |
+              tee "$diagnostics/gtk3-exclusion.txt"
+
+        - name: Build isolated reproducer
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            source_dir="$(cygpath -u "$GITHUB_WORKSPACE")/tests/gtk4-ime-reproducer"
+            build_dir="$(cygpath -u "$RUNNER_TEMP")/gtk-ime-reproducer-build"
+            diagnostics="$(cygpath -u "$RUNNER_TEMP")/gtk-ime-reproducer-diagnostics"
+
+            {
+              cmake -S "$source_dir" -B "$build_dir" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release
+              cmake --build "$build_dir" --verbose
+            } 2>&1 | tee "$diagnostics/build.txt"
+
+            executable="$build_dir/gtk-ime-window-lifetime-repro.exe"
+            test -x "$executable"
+            objdump -f "$executable" | tee "$diagnostics/executable-architecture.txt"
+            objdump -p "$executable" |
+              sed -n 's/^[[:space:]]*DLL Name:[[:space:]]*//p' |
+              tee "$diagnostics/imported-dlls.txt"
+            grep -q 'architecture: i386:x86-64' \
+              "$diagnostics/executable-architecture.txt"
+            grep -Eqi '^libgtk-4-[0-9]+\.dll$' "$diagnostics/imported-dlls.txt"
+            if grep -Eqi '^libgtk-3-[0-9]+\.dll$' "$diagnostics/imported-dlls.txt"; then
+              echo 'Built executable unexpectedly imports GTK3.' >&2
+              exit 1
+            fi
+
+        - name: Run baseline and early-focus-out variants
+          run: |
+            $ErrorActionPreference = 'Stop'
+            $diagnostics = Join-Path $Env:RUNNER_TEMP 'gtk-ime-reproducer-diagnostics'
+            $executable = Join-Path $Env:RUNNER_TEMP `
+                'gtk-ime-reproducer-build\gtk-ime-window-lifetime-repro.exe'
+            $ucrtPrefixOutput = msys2 -c 'cygpath -w $MSYSTEM_PREFIX'
+            if ($LASTEXITCODE -ne 0) {
+                throw "Cannot resolve the UCRT64 runtime prefix: exit $LASTEXITCODE"
+            }
+            $ucrtPrefix = ($ucrtPrefixOutput -join "`n").Trim()
+            if (!(Test-Path -LiteralPath (Join-Path $ucrtPrefix 'bin') -PathType Container)) {
+                throw 'The resolved UCRT64 runtime prefix has no bin directory.'
+            }
+            $Env:PATH = @(
+                (Join-Path $ucrtPrefix 'bin')
+                (Join-Path $Env:SystemRoot 'System32')
+                $Env:SystemRoot
+            ) -join [IO.Path]::PathSeparator
+
+            function Invoke-ReproducerVariant {
+                param(
+                    [Parameter(Mandatory)] [string] $Name,
+                    [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $Arguments
+                )
+
+                $stdout = Join-Path $diagnostics "$Name.stdout.txt"
+                $stderr = Join-Path $diagnostics "$Name.stderr.txt"
+                $startedAt = [DateTimeOffset]::UtcNow
+                $timedOut = $false
+                $startParameters = @{
+                    FilePath = $executable
+                    WindowStyle = 'Hidden'
+                    PassThru = $true
+                    RedirectStandardError = $stderr
+                    RedirectStandardOutput = $stdout
+                }
+                if ($Arguments.Count -gt 0) {
+                    $startParameters.ArgumentList = $Arguments
+                }
+
+                try {
+                    $process = Start-Process @startParameters
+                    if (!$process.WaitForExit(15000)) {
+                        $timedOut = $true
+                        $process.Kill($true)
+                        $process.WaitForExit()
+                    }
+                    $exitCode = $process.ExitCode
+                    $exitCodeBytes = [BitConverter]::GetBytes([int32] $exitCode)
+                    $exitCodeUnsigned = [BitConverter]::ToUInt32($exitCodeBytes, 0)
+                    $exitCodeHex = '0x{0:X8}' -f $exitCodeUnsigned
+                    $startError = $null
+                }
+                catch {
+                    $exitCode = $null
+                    $exitCodeHex = $null
+                    $startError = $_.Exception.ToString()
+                    $startError | Set-Content -LiteralPath $stderr -Encoding utf8
+                    if (!(Test-Path -LiteralPath $stdout)) {
+                        New-Item -ItemType File -Path $stdout | Out-Null
+                    }
+                }
+
+                $record = [pscustomobject] [ordered] @{
+                    variant = $Name
+                    arguments = $Arguments
+                    startedAtUtc = $startedAt.ToString('o')
+                    endedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                    exitCode = $exitCode
+                    exitCodeHex = $exitCodeHex
+                    timedOut = $timedOut
+                    startError = $startError
+                }
+                $record | ConvertTo-Json -Depth 4 |
+                    Set-Content -LiteralPath (Join-Path $diagnostics "$Name.json") `
+                        -Encoding utf8
+
+                Write-Host "--- $Name stdout ---"
+                Get-Content -LiteralPath $stdout |
+                    ForEach-Object { Write-Host $_ }
+                Write-Host "--- $Name stderr ---"
+                Get-Content -LiteralPath $stderr |
+                    ForEach-Object { Write-Host $_ }
+                Write-Host "$Name native exit: $exitCode ($exitCodeHex)"
+                return $record
+            }
+
+            $results = @(
+                Invoke-ReproducerVariant -Name 'baseline' -Arguments @()
+                Invoke-ReproducerVariant -Name 'early-focus-out' `
+                    -Arguments @('--early-focus-out')
+            )
+            $results | ConvertTo-Json -Depth 4 |
+                Set-Content -LiteralPath (Join-Path $diagnostics 'summary.json') `
+                    -Encoding utf8
+            $failures = @($results | Where-Object {
+                $_.timedOut -or $null -eq $_.exitCode -or $_.exitCode -ne 0
+            })
+            if ($failures.Count -ne 0) {
+                $failedVariants = ($failures | ForEach-Object {
+                    "$($_.variant)=$($_.exitCode) ($($_.exitCodeHex)), " +
+                    "timedOut=$($_.timedOut)"
+                }) -join ', '
+                throw "GTK IME reproducer failure: $failedVariants"
+            }
+
+        - name: Upload complete reproducer diagnostics
+          if: ${{ always() }}
+          uses: actions/upload-artifact@v7
+          with:
+            name: gtk4-ime-reproducer-${{ github.run_id }}-${{ github.run_attempt }}
+            path: ${{ runner.temp }}/gtk-ime-reproducer-diagnostics
+            if-no-files-found: error
+            compression-level: 6
