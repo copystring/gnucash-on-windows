@@ -5,12 +5,17 @@ This is a standalone GTK4-only reproducer for a Windows
 destroyed. It contains no GnuCash source, test data, or private GTK API.
 
 The program presents a real `GtkWindow` containing a real `GtkEntry`, requests
-entry focus, and waits for a real `GdkFrameClock::after-paint` boundary. It then
-deliberately keeps an explicit window reference while calling
-`gtk_window_destroy()`, verifies that the window became unrealized, dispatches
-the ordinary GLib main context for 250 ms, releases that retained reference,
-and dispatches it for another 250 ms. It never injects Win32 messages or emits
-synthetic GTK signals.
+entry focus, and waits for a real `GdkFrameClock::after-paint` boundary plus
+the public `GtkWindow::is-active` and root-focus observations. GTK4 may place
+root focus on the Entry's `GtkText` delegate, so the focused root widget itself
+must have GTK widget focus and belong to the real Entry. It then deliberately
+keeps an explicit window reference while
+calling `gtk_window_destroy()`, verifies that the window became unrealized, and
+releases that retained reference after a normal main-loop interval. Only after
+that final unref does it present a second real `GtkWindow` with a second
+`GtkEntry`, observes another frame and active text focus, and dispatches its
+ordinary main loop briefly. It never injects Win32 messages or emits synthetic
+GTK signals.
 
 The program makes GTK, GDK, GLib-GObject, and process-wide critical logs fatal.
 The observed IME assertion therefore produces a failing native process instead
@@ -64,10 +69,13 @@ without a crash or fatal critical. In particular, it does **not** prove that a
 later Win32 IME message occurred or that GTK has been fixed.
 
 The hosted runner is not assumed to provide a usable interactive focus path.
-If no `after-paint` callback arrives, or if the entry does not own root focus at
-that boundary, the reproducer emits a specific diagnostic and fails before the
-teardown probe. Such a result establishes a runner limitation for this probe;
-it is not evidence for or against the IME lifetime assertion itself.
+Each initial and follow-up window has a two-second bounded precondition: it
+must receive an `after-paint` frame, become active, and give a focused GTK root
+delegate belonging to the real Entry. A timeout distinguishes a missing frame
+from an arrived frame without active-window or delegate/root focus, and fails before the
+corresponding teardown or follow-up probe. Such a result establishes a runner
+limitation for this probe; it is not evidence for or against the IME lifetime
+assertion itself.
 
 Do not use a local GUI run for repository validation. The source may be built
 manually in an appropriate UCRT64 environment only when an interactive Windows
