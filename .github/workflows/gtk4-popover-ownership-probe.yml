@@ -391,6 +391,7 @@ jobs:
           env:
             GDK_BACKEND: x11
             LIBGL_ALWAYS_SOFTWARE: '1'
+            DEBUGINFOD_URLS: https://debuginfod.ubuntu.com
           run: |
             set -euo pipefail
             diagnostics="$RUNNER_TEMP/gtk-popover-probe-diagnostics"
@@ -402,14 +403,31 @@ jobs:
 
             test -x "$executable"
             command -v gdb
+            gtk_dso="$(ldd "$executable" | awk '/libgtk-4\.so\.1/ { print $3; exit }')"
+            test -r "$gtk_dso"
+            {
+              printf 'gtk4_dso=%s\n' "$gtk_dso"
+              readelf --notes "$gtk_dso"
+            } | tee "$diagnostics/libgtk-4-build-id.txt"
+            grep -q 'Build ID:' "$diagnostics/libgtk-4-build-id.txt"
             cat >"$gdb_commands" <<'GDB'
             set pagination off
             set confirm off
-            set debuginfod enabled off
+            set debuginfod enabled on
             set breakpoint pending off
             set can-use-hw-watchpoints 1
+            # Stop before main: debuginfod downloads and symbol loading stay
+            # outside the probe's own two-second after-paint watchdog.
+            start
+            printf "POPOVER_GDB_PRELOAD_BEGIN\n"
+            info sharedlibrary
+            info proc mappings
+            sharedlibrary libgtk-4\.so\.1
+            sharedlibrary libgobject-2\.0\.so\.0
+            printf "POPOVER_GDB_PRELOAD_END\n"
+            info sharedlibrary
             break gtk_popover_probe_refcount_marker
-            run
+            continue
             set $watched_popover = object
             printf "POPOVER_GDB_MARKER object=%p ref_count=%u\n", $watched_popover, ((GObject *) $watched_popover)->ref_count
             watch -location ((GObject *) $watched_popover)->ref_count
@@ -448,6 +466,9 @@ jobs:
             grep -q 'Hardware watchpoint' "$gdb_stdout"
             grep -q 'POPOVER_GDB_MARKER object=' "$gdb_stdout"
             grep -q 'POPOVER_REFCOUNT_TRANSITION object=' "$gdb_stdout"
+            grep -q 'POPOVER_GDB_PRELOAD_BEGIN' "$gdb_stdout"
+            grep -q 'POPOVER_GDB_PRELOAD_END' "$gdb_stdout"
+            grep -q 'libgtk-4\.so\.1' "$gdb_stdout"
             # Exit 1 alone also covers setup/watchdog failures and is insufficient.
             grep -q 'popover still alive after test-ref release' "$gdb_stderr"
             if grep -q 'No required after-paint boundary' "$gdb_stderr"; then

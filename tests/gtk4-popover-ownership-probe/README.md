@@ -38,15 +38,24 @@ its job after the other modes have also produced diagnostics.
 
 On Linux, the isolated probe is built as `RelWithDebInfo`. After the unchanged
 three-mode baseline, the workflow separately reruns only the known failing
-`retained-normal-close` case under batch GDB. A deliberately global,
-non-inlined marker immediately after the Popover creation supplies its public
-`GObject *` to GDB; GDB must install a hardware watchpoint on
-`GObject.ref_count`, record every observed transition with a twelve-frame
-backtrace, and retain the native exit `1`. Exit `1` is not sufficient: the
-diagnostic also requires the exact remaining-Popover message and rejects the
-probe's inner two-second after-paint watchdog, which would be a timing/setup
-failure rather than ownership evidence. The outer trace is capped at 120
-seconds and is an additional artifact: it never converts the preceding
+`retained-normal-close` case under batch GDB. GDB starts and stops before
+`main`, enables Ubuntu's official HTTPS debuginfod service through
+`DEBUGINFOD_URLS`, records `info sharedlibrary` plus `info proc mappings` for
+that same process, and explicitly preloads the GTK4 and GObject shared-library
+symbols. The actually linked GTK DSO's `readelf --notes` Build ID is a separate
+artifact. Download and preload time count against the outer 120-second trace
+limit, before the probe can arm its own two-second after-paint watchdog.
+
+A deliberately global, non-inlined marker immediately after the Popover
+creation supplies its public `GObject *` to GDB; GDB must install a hardware
+watchpoint on `GObject.ref_count`, record every observed transition with a
+twelve-frame backtrace, and retain the native exit `1`. Exit `1` is not
+sufficient: the diagnostic also requires the exact remaining-Popover message
+and rejects the probe's inner two-second after-paint watchdog, which would be a
+timing/setup failure rather than ownership evidence. If Ubuntu cannot supply
+the necessary private-library symbols, the trace, mappings, and Build ID still
+state that diagnosis boundary; they are not treated as a fabricated symbolic
+owner. This trace is an additional artifact: it never converts the preceding
 baseline failure to success or weakens fatal GTK, GDK, or GLib-GObject
 diagnostics.
 
