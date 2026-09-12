@@ -10,6 +10,11 @@ popover, waits through an after-paint boundary, and closes it with
 `gtk_popover_popdown()`. Its `closed` handler follows the product ordering:
 clear the weak owner slot, then call `gtk_widget_unparent()`.
 
+The first probe revision (`b8d2597`) used a non-focusable label and passed all
+three modes on both runners. The current revision changes only that child to
+a box of four focusable buttons, matching the matcher menu's focusable
+content. Neither revision calls GnuCash callbacks or forces a focus override.
+
 Three independent processes cover the public ownership paths:
 
 ```text

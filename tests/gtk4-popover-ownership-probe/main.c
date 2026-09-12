@@ -93,9 +93,16 @@ static GtkPopover *
 new_popover (ProbeState *state)
 {
     GtkPopover *popover = GTK_POPOVER (gtk_popover_new ());
+    GtkWidget *menu = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 
     g_assert_true (gtk_popover_get_autohide (popover));
-    gtk_popover_set_child (popover, gtk_label_new ("GTK popover probe"));
+    for (guint index = 0; index < 4; index++)
+    {
+        GtkWidget *button = gtk_button_new_with_label ("Popover action");
+        gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+        gtk_box_append (GTK_BOX (menu), button);
+    }
+    gtk_popover_set_child (popover, menu);
     gtk_widget_set_parent (GTK_WIDGET (popover), state->anchor);
     state->current_popover = popover;
     g_object_add_weak_pointer (G_OBJECT (popover),
