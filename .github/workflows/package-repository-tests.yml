@@ -5,16 +5,22 @@ on:
     paths:
       - '.github/actions/publish-ucrt64-repo/**'
       - 'bundle-mingw64.ps1'
+      - 'setup-mingw64.ps1'
       - 'inno_setup/**'
       - 'setup-mingw64.sh'
+      - 'tests/SetupMingw64.Tests.ps1'
+      - 'tests/setup-mingw64.sh.test'
       - '.github/workflows/gnucash-ucrt64-nightly.yml'
       - '.github/workflows/package-repository-tests.yml'
   pull_request:
     paths:
       - '.github/actions/publish-ucrt64-repo/**'
       - 'bundle-mingw64.ps1'
+      - 'setup-mingw64.ps1'
       - 'inno_setup/**'
       - 'setup-mingw64.sh'
+      - 'tests/SetupMingw64.Tests.ps1'
+      - 'tests/setup-mingw64.sh.test'
       - '.github/workflows/gnucash-ucrt64-nightly.yml'
       - '.github/workflows/package-repository-tests.yml'
   workflow_dispatch:
@@ -47,6 +53,16 @@ jobs:
         run: |
           & ./inno_setup/tests/InstallerDiagnostics.Tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test PowerShell bootstrap failure contracts without installation
+        shell: pwsh
+        run: |
+          & ./tests/SetupMingw64.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test Windows PowerShell bootstrap failure contracts without installation
+        shell: powershell
+        run: |
+          & ./tests/SetupMingw64.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Inno Setup for source fixtures
         shell: pwsh
         run: |
@@ -63,3 +79,11 @@ jobs:
             -InnoCompiler "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             -RunInstallerFixtures
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  shell-bootstrap-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test shell bootstrap failure contracts with stub package tools
+        run: bash ./tests/setup-mingw64.sh.test

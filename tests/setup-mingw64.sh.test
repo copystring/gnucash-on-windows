@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+source_script="$repository_root/setup-mingw64.sh"
+test_root=$(mktemp -d)
+
+cleanup() {
+    rm -rf "$test_root"
+}
+trap cleanup EXIT
+
+make_stubs() {
+    local stub_dir=$1
+    mkdir -p "$stub_dir"
+cat > "$stub_dir/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SETUP_MINGW64_STUB_LOG"
+if [ "${SETUP_MINGW64_FAIL_COMMAND:-}" = "pacman" ]; then
+    exit 71
+fi
+EOF
+    cat > "$stub_dir/sed" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$stub_dir/grep" <<'EOF'
+#!/usr/bin/env bash
+if [ "${SETUP_MINGW64_GREP_STATUS:-1}" -eq 1 ]; then
+    exit 1
+fi
+exit "${SETUP_MINGW64_GREP_STATUS}"
+EOF
+cat > "$stub_dir/makepkg-mingw" <<'EOF'
+#!/usr/bin/env bash
+printf 'makepkg %s\n' "$*" >> "$SETUP_MINGW64_STUB_LOG"
+if [ "${SETUP_MINGW64_FAIL_COMMAND:-}" = "makepkg" ]; then
+    exit 72
+fi
+touch mingw-w64-fixture.pkg.tar.zst
+EOF
+    chmod +x "$stub_dir"/*
+}
+
+run_script() {
+    local root=$1
+    local architecture=$2
+    local log=$3
+    PATH="$root/stubs:$PATH" SETUP_MINGW64_STUB_LOG="$log" MINGW_ARCH="$architecture" \
+        "$root/setup-mingw64.sh"
+}
+
+make_tree() {
+    local root=$1
+    mkdir -p "$root"
+    cp "$source_script" "$root/setup-mingw64.sh"
+    chmod +x "$root/setup-mingw64.sh"
+    make_stubs "$root/stubs"
+}
+
+ucrt_root="$test_root/ucrt"
+make_tree "$ucrt_root"
+ucrt_log="$ucrt_root/pacman.log"
+run_script "$ucrt_root" ucrt64 "$ucrt_log"
+grep -q -- '-Syu --noconfirm' "$ucrt_log"
+grep -q -- '-Sy --noconfirm' "$ucrt_log"
+
+pacman_failure_root="$test_root/pacman-failure"
+make_tree "$pacman_failure_root"
+pacman_failure_log="$pacman_failure_root/pacman.log"
+if SETUP_MINGW64_FAIL_COMMAND=pacman run_script "$pacman_failure_root" ucrt64 "$pacman_failure_log"; then
+    echo 'failing pacman returned success' >&2
+    exit 1
+fi
+if [ "$(wc -l < "$pacman_failure_log")" -ne 1 ]; then
+    echo 'script continued after failing pacman' >&2
+    exit 1
+fi
+
+unsupported_root="$test_root/unsupported"
+make_tree "$unsupported_root"
+unsupported_log="$unsupported_root/pacman.log"
+if run_script "$unsupported_root" unsupported "$unsupported_log"; then
+    echo 'unsupported architecture returned success' >&2
+    exit 1
+fi
+if [ -e "$unsupported_log" ]; then
+    echo 'unsupported architecture executed a package command' >&2
+    exit 1
+fi
+
+missing_recipes_root="$test_root/missing-recipes"
+make_tree "$missing_recipes_root"
+missing_recipes_log="$missing_recipes_root/pacman.log"
+if run_script "$missing_recipes_root" clang64 "$missing_recipes_log"; then
+    echo 'clang64 without recipes returned success' >&2
+    exit 1
+fi
+if [ -e "$missing_recipes_log" ]; then
+    echo 'missing clang64 recipes executed a package command' >&2
+    exit 1
+fi
+
+clang_root="$test_root/clang"
+make_tree "$clang_root"
+for package in gwenhywfar libchipcard aqbanking guile3 libdbi libdbi-drivers OpenSP libofx swig; do
+    mkdir -p "$clang_root/packages/$package"
+done
+clang_log="$clang_root/pacman.log"
+run_script "$clang_root" clang64 "$clang_log"
+grep -q -- '-U --noconfirm mingw-w64-fixture.pkg.tar.zst' "$clang_log"
+
+makepkg_failure_root="$test_root/makepkg-failure"
+make_tree "$makepkg_failure_root"
+for package in gwenhywfar libchipcard aqbanking guile3 libdbi libdbi-drivers OpenSP libofx swig; do
+    mkdir -p "$makepkg_failure_root/packages/$package"
+done
+makepkg_failure_log="$makepkg_failure_root/pacman.log"
+if SETUP_MINGW64_FAIL_COMMAND=makepkg run_script "$makepkg_failure_root" clang64 "$makepkg_failure_log"; then
+    echo 'failing makepkg returned success' >&2
+    exit 1
+fi
+if grep -q -- '-U ' "$makepkg_failure_log"; then
+    echo 'script installed a package after failing makepkg' >&2
+    exit 1
+fi
+
+grep_failure_root="$test_root/grep-failure"
+make_tree "$grep_failure_root"
+grep_failure_log="$grep_failure_root/pacman.log"
+if SETUP_MINGW64_GREP_STATUS=2 run_script "$grep_failure_root" ucrt64 "$grep_failure_log"; then
+    echo 'grep read failure returned success' >&2
+    exit 1
+fi
+if grep -q -- '-Sy --noconfirm' "$grep_failure_log"; then
+    echo 'script continued after pacman.conf inspection failure' >&2
+    exit 1
+fi

@@ -59,18 +59,27 @@ Param(
     [Parameter()] [string]$msys2_root = "$target_dir\\msys2"
 )
 
+$ErrorActionPreference = 'Stop'
+
 function make-unixpath([string]$path) {
     $new_path = $path -replace  "^([A-Z]):", '/$1' -replace "\\", '/' -replace "//", '/'
     "$new_path"
 }
 
 $bash_path = "$msys2_root\\usr\\bin\\bash.exe"
+$script_root = Split-Path -Parent $PSCommandPath
+if ([string]::IsNullOrWhiteSpace($script_root)) {
+    throw 'Unable to determine the setup script directory.'
+}
 switch ($mingw_arch) {
     "clang64" { $mingw_arch_code = "clang-x86_64" }
     "ucrt64"  { $mingw_arch_code = "ucrt-x86_64" }
-    default { write-host "$mingw_arch is not supported"
-              exit
-            }
+    default { throw "$mingw_arch is not supported." }
+}
+
+$packages_dir = Join-Path $script_root 'packages'
+if ($mingw_arch -eq 'clang64' -and !(Test-Path -LiteralPath $packages_dir -PathType Container)) {
+    throw "clang64 requires package recipes below $packages_dir."
 }
 
 $progressPreference = 'silentlyContinue'
@@ -83,41 +92,87 @@ $mingw_url_prefix = "$msys_uri/mingw/$mingw_arch_code/$mingw_arch_long-"
 $env:MSYSTEM = $mingw_arch.ToUpper()
 $download_dir="$env:USERPROFILE\\Downloads"
 
-if (!(test-path -path $target_dir)) {
-    new-item "$target_dir" -type directory
-}
-
 function make-pkgnames ([string]$prefix, [string]$items) {
     $items.split(" ") | foreach-object {"$prefix$_"}
 }
 
-function install-package([string]$url, [string]$install_dir,
-			 [string]$setup_args)
+function Start-SetupInstallerProcess([Diagnostics.ProcessStartInfo]$process_info)
+{
+    return [Diagnostics.Process]::Start($process_info)
+}
+
+function install-package([string]$url, [string]$setup_args)
 {
     $filename = $url.Substring($url.LastIndexOf("/") + 1)
     $download_file = "$download_dir\$filename"
+    $temporary_download_file = Join-Path $download_dir ".${filename}.$([guid]::NewGuid().ToString('N')).partial"
     if (!(test-path -path $download_file)) {
-	write-host "Downloading $download_file from $url"
-        curl.exe -L $url --output $download_file
+        try {
+	    write-host "Downloading $download_file from $url"
+            curl.exe --fail --location $url --output $temporary_download_file
+            if ($LASTEXITCODE -ne 0) {
+                throw "Downloading $url failed with exit code $LASTEXITCODE."
+            }
+            if (!(Test-Path -LiteralPath $temporary_download_file -PathType Leaf)) {
+                throw "Downloading $url did not create $temporary_download_file."
+            }
+            Move-Item -LiteralPath $temporary_download_file -Destination $download_file -Force
+        }
+        finally {
+            if (Test-Path -LiteralPath $temporary_download_file) {
+                Remove-Item -LiteralPath $temporary_download_file -Force
+            }
+        }
+    }
+    if (!(Test-Path -LiteralPath $download_file -PathType Leaf)) {
+        throw "Downloaded installer is missing: $download_file"
     }
 
     write-host "Installing $download_file $setup_args"
     $psi = new-object "Diagnostics.ProcessStartInfo"
     $psi.Filename = "$download_file"
     $psi.Arguments = "$setup_args"
-    $proc = [Diagnostics.Process]::Start($psi)
+    $proc = Start-SetupInstallerProcess $psi
     $proc.waitForExit()
+    if ($proc.ExitCode -ne 0) {
+        throw "Installer $download_file failed with exit code $($proc.ExitCode)."
+    }
 }
 
 
 function bash-command() {
     param ([string]$command = "")
     if (!(test-path -path $bash_path)) {
-	write-host "Shell program not found, aborting."
-	return
+	throw "Shell program not found: $bash_path"
     }
-    #write-host "Running bash command ""$command"""
-    Start-Process -FilePath "$bash_path" -ArgumentList "-c ""export PATH=/usr/bin; $command""" -NoNewWindow -Wait
+    $process_info = New-Object Diagnostics.ProcessStartInfo
+    $process_info.FileName = $bash_path
+    $process_info.Arguments = '-s'
+    $process_info.UseShellExecute = $false
+    $process_info.CreateNoWindow = $true
+    $process_info.RedirectStandardInput = $true
+    $process = [Diagnostics.Process]::Start($process_info)
+    # Bash reads commands from stdin. Force LF so Windows StreamWriter defaults
+    # cannot append a carriage return to the shell input.
+    $process.StandardInput.NewLine = "`n"
+    $process.StandardInput.WriteLine('export PATH=/usr/bin')
+    $process.StandardInput.WriteLine($command)
+    $process.StandardInput.Close()
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        throw "Shell command failed with exit code $($process.ExitCode): $command"
+    }
+}
+
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
+if (!(Test-Path -LiteralPath $target_dir -PathType Container)) {
+    New-Item -Path $target_dir -ItemType Directory | Out-Null
+}
+if (!(Test-Path -LiteralPath $download_dir -PathType Container)) {
+    New-Item -Path $download_dir -ItemType Directory | Out-Null
 }
 
 # Install MSYS2
@@ -129,12 +184,11 @@ if (!(test-path -path $bash_path)) {
     $msys_setup_args = @"
 "@
 
-    install-package -url $mingw64_installer -install_dir "$msys2_root" -setup_args "in --root ""$msys_install_dir"" --al --am -c"
+    install-package -url $mingw64_installer -setup_args "in --root ""$msys_install_dir"" --al --am -c"
 
 }
 if (!(test-path -path $bash_path)) {
-    write-host "Failed to install MSys2, aborting."
-    exit
+    throw "Failed to install MSys2: shell program not found at $bash_path"
 }
 
 $ucrt_repo_url = "https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/"
@@ -142,15 +196,20 @@ $ucrt_repo_url = "https://github.com/Gnucash/gnucash-windows-deps-repo/releases/
 $html_help_workshop_url =  "http://web.archive.org/web/20160201063255/http://download.microsoft.com/download/0/A/9/0A939EF6-E31C-430F-A3DF-DFAE7960D564/htmlhelp.exe"
 $html_help_workshop_installer = "htmlhelp.exe"
 
-$installed_hh = get-item -path "hkcu:\SOFTWARE\Microsoft\HTML Help Workshop" | foreach-object{$_.GetValue("InstallDir")}
+$html_help_registry = 'hkcu:\SOFTWARE\Microsoft\HTML Help Workshop'
+$installed_hh = if (Test-Path -LiteralPath $html_help_registry) {
+    (Get-Item -LiteralPath $html_help_registry).GetValue('InstallDir')
+} else {
+    $null
+}
+
 
 if (! (($installed_hh) -and (test-path -path $installed_hh))) {
-  install-package -url $html_help_workshop_url -download_file "$download_dir\\$html_help_workshop_installer" -install_dir ${env:ProgramFiles(x86)} -setup_cmd $html_help_workshop_installer
+  install-package -url $html_help_workshop_url -setup_args ''
 }
 $hhctrl_ocx = "c:\Windows\System32\hhctrl.ocx"
 if (!(test-path -path $hhctrl_ocx)) {
-    write-host "Something's wrong with HTML Help Workshop, couldn't find $hhctrl_ocx."
-    exit
+    throw "Something's wrong with HTML Help Workshop, couldn't find $hhctrl_ocx."
 }
 $hhctrl_ocx = make-unixpath -path $hhctrl_ocx
 
@@ -160,7 +219,7 @@ if (!(test-path -path ${env:ProgramFiles(x86)}\inno)) {
     $inno_setup_url = "http://files.jrsoftware.org/is/5/innosetup-5.5.9-unicode.exe"
     $inno_setup_installer = "innosetup-5.5.9-unicode.exe"
     $inno_setup_args = " /verysilent /suppressmsgboxes /nocancel /norestart /dir=""${env:ProgramFiles(x86)}\inno"""
-   install-package -url $inno_setup_url -download_file "$download_dir\$inno_setup_installer" -install_dir ${env:ProgramFiles(x86)} -setup_cmd $inno_setup_installer -setup_args $inno_setup_args
+   install-package -url $inno_setup_url -setup_args $inno_setup_args
 }
 # Update the core system.
 Write-Host @"
@@ -170,9 +229,8 @@ bash-command -command "pacman -Syyuu --noconfirm"
 bash-command -command "pacman -Syyuu --noconfirm"
 
 $Env:MINGW_ARCH = $mingw_arch
-$pwd = pwd
-$PWD = make-unixpath $pwd
-bash-command -command """$PWD/setup-mingw64.sh"""
+$script_root_unix = make-unixpath -path $script_root
+bash-command -command "cd ""$script_root_unix"" && ""$script_root_unix/setup-mingw64.sh"""
 Write-Host @"
 
 Next we'll install the HTML Help Workshop includes and libraries into our MinGW directory.
@@ -181,7 +239,9 @@ Next we'll install the HTML Help Workshop includes and libraries into our MinGW 
 $htmlhelp_h = "$msys2_root/$mingw_path/include/htmlhelp.h"
 if (!(test-path -path $htmlhelp_h)) {
     if (!$installed_hh) {
-	$installed_hh = get-item -path "hkcu:\SOFTWARE\Microsoft\HTML Help Workshop" | foreach-object{$_.GetValue("InstallDir")}
+	if (Test-Path -LiteralPath $html_help_registry) {
+	    $installed_hh = (Get-Item -LiteralPath $html_help_registry).GetValue('InstallDir')
+	}
     }
     $installed_hh = make-unixpath -path $installed_hh
     if (!$installed_hh) {
@@ -191,12 +251,12 @@ There was an error installing HTML Help Workshop. This will prevent building the
 ****************
 "@
     } else {
-	bash-command -command "cp """"$installed_hh/include/htmlhelp.h"""" $mingw_path/include"
+	bash-command -command "cp ""$installed_hh/include/htmlhelp.h"" ""$mingw_path/include"""
 	bash-command -command "$mingw_bin/gendef $hhctrl_ocx - > $mingw_path/lib/htmlhelp.def"
 	bash-command -command "cd $mingw_path/lib && $mingw_bin/dlltool -k -d htmlhelp.def -l libhtmlhelp.a"
     }
     if (!(test-path -path $htmlhelp_h)) {
-	Write-Host "HTML Help Workshop isn't correctly installed."
+	throw "HTML Help Workshop isn't correctly installed."
     }
 }
 Write-Host @"

@@ -1,3 +1,27 @@
+set -euo pipefail
+
+script_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$script_root"
+
+if [ "x${MINGW_ARCH:-}" == "x" ]; then
+    MINGW_ARCH="ucrt64"
+fi
+
+for arch in $MINGW_ARCH; do
+    case $arch in
+        clang64|ucrt64) ;;
+        *)
+            echo "unsupported MINGW architecture $arch" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ " $MINGW_ARCH " == *" clang64 "* ]] && [ ! -d "$script_root/packages" ]; then
+    echo "clang64 requires package recipes below $script_root/packages" >&2
+    exit 2
+fi
+
 function make-pkgnames()
 {
     prefix=$1
@@ -30,7 +54,7 @@ function build-packages()
         pushd packages/$pkg
         makepkg-mingw -sCLf --noconfirm
         for f in mingw-w64-*.pkg.tar.zst; do
-            pacman -U --nocofirm $f
+            pacman -U --noconfirm $f
         done
         popd
     done
@@ -66,10 +90,6 @@ make-pkgnames  "msys/" base-devel git
 msys_devel=$pkgnames
 pacman -S $msys_devel --noconfirm --needed
 
-if [ "x$MINGW_ARCH" == "x" ]; then
-    MINGW_ARCH="ucrt64"
-fi
-
 # We maintain a repository as a rolling release in GitHub for ucrt64 so we use that if we can, otherwise we build everything for the selected architecture.
 for arch in $MINGW_ARCH; do
     case $arch in
@@ -77,16 +97,23 @@ for arch in $MINGW_ARCH; do
             build-packages $arch
             ;;
         ucrt64)
-            arch_repo=$(grep gnc-$arch /etc/pacman.conf)
+            if arch_repo=$(grep gnc-$arch /etc/pacman.conf); then
+              :
+            else
+              grep_status=$?
+              if [ "$grep_status" -eq 1 ]; then
+                arch_repo=""
+              else
+                echo "Unable to inspect /etc/pacman.conf (grep exit $grep_status)" >&2
+                exit "$grep_status"
+              fi
+            fi
             if [ -z "$arch_repo" ]; then
               sed -i "/^# SigLevel = Never/a [gnc-$arch]\nSigLevel = Optional TrustAll\nServer = https://github.com/Gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/\n" /etc/pacman.conf
             fi
             pacman -Sy --noconfirm
             install-deps "ucrt-x86_64"
             ;;
-        *)
-            echo "unsupported MINGW architecture $arch"
-            ;;
     esac
 done
-exit
+exit 0
