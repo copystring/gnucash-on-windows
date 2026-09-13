@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-readonly CORE_COMMIT='8d86cf048bbf2094d481da87f44aad36693f3302'
+readonly CORE_COMMIT='d2326051de0ad768cb82e7b3d09983ca7a0f585e'
 
 if [[ $# -ne 3 ]]; then
     echo "usage: $0 CORE_SOURCE GTK_BUILD DIAGNOSTICS" >&2
