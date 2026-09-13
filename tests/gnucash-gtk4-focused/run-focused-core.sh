@@ -18,7 +18,7 @@ readonly diagnostics="$3"
 readonly gtk_dso="${gtk_build}/gtk/libgtk-4.so.1"
 readonly gtk_runtime_path="${gtk_build}/gtk:${gtk_build}/gdk:${gtk_build}/gsk"
 readonly ninja_jobs="${NINJA_JOBS:-3}"
-readonly test_regex='^(test-budget-view-column-ownership|test-plugin-page-budget-window-lifetime|test-dialog-sx-since-last-run-ownership|test-tree-view-row-ownership)$'
+readonly test_regex='^(test-budget-view-column-ownership|test-plugin-page-budget-window-lifetime|test-dialog-sx-since-last-run-ownership|test-tree-view-row-ownership|test-import-account-matcher)$'
 
 case "$ninja_jobs" in
     1|2|3) ;;
@@ -35,6 +35,15 @@ for command in cmake ctest git ldd ninja xvfb-run; do
 done
 test -d "$core_source"
 test -r "$gtk_dso"
+
+# WebKit is part of the real GnuCash link closure, even for these GUI tests.
+# Check it before compiling Core: an X11-only GTK omits GDK Wayland exports
+# that a distribution WebKit can require, despite a matching GTK version.
+readonly webkit_dso="$(pkg-config --variable=libdir webkitgtk-6.0)/libwebkitgtk-6.0.so"
+test -r "$webkit_dso"
+LD_LIBRARY_PATH="$gtk_runtime_path${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    python3 -c 'import ctypes, os, sys; ctypes.CDLL(sys.argv[1], mode=os.RTLD_NOW); print("WebKit load closure verified:", sys.argv[1])' \
+    "$webkit_dso" 2>&1 | tee "$diagnostics/focused-core-webkit-load.txt"
 
 core_commit="$(git -C "$core_source" rev-parse HEAD)"
 readonly core_commit
@@ -76,17 +85,18 @@ test -r "$gnome_utils_ctest_file"
 grep -F "$gtk_runtime_path" "$gnome_ctest_file" |
     tee "$diagnostics/focused-core-registered-guile-runtime.txt"
 
-# compiled-schemas provides the explicit GSettings dependency of all four
+# compiled-schemas provides the explicit GSettings dependency of all five
 # tests. scm-gnome is the product Guile target required by the dialog test;
 # its declared dependencies build the corresponding engine/application Scheme
-# modules. The remaining targets are the four registered test executables.
-cmake --build "$build_dir" --parallel "$ninja_jobs" --verbose --target \
+# modules. The remaining targets are the five registered test executables.
+cmake --build "$build_dir" --parallel "$ninja_jobs" --target \
     compiled-schemas \
     scm-gnome \
     test-budget-view-column-ownership \
     test-plugin-page-budget-window-lifetime \
     test-dialog-sx-since-last-run-ownership \
     test-tree-view-row-ownership \
+    test-import-account-matcher \
     2>&1 | tee "$diagnostics/focused-core-build.txt"
 
 readonly -a test_executables=(
@@ -94,6 +104,7 @@ readonly -a test_executables=(
     "${build_dir}/gnucash/gnome/test/test-plugin-page-budget-window-lifetime"
     "${build_dir}/gnucash/gnome/test/test-dialog-sx-since-last-run-ownership"
     "${build_dir}/gnucash/gnome-utils/test/test-tree-view-row-ownership"
+    "${build_dir}/gnucash/import-export/test/test-import-account-matcher"
 )
 
 : >"$diagnostics/focused-core-ldd.txt"
@@ -132,12 +143,12 @@ set -e
 cp "$build_dir/Testing/Temporary/LastTest.log" "$diagnostics/focused-core-LastTest.log"
 grep -l -F "calling init: $gtk_dso" "$diagnostics"/focused-core-loader.* \
     >"$diagnostics/focused-core-gtk-loader-processes.txt"
-[[ "$(wc -l <"$diagnostics/focused-core-gtk-loader-processes.txt")" -eq 4 ]]
+[[ "$(wc -l <"$diagnostics/focused-core-gtk-loader-processes.txt")" -eq 5 ]]
 
 {
     printf 'focused_core_build_dir=%s\n' "$build_dir"
     printf 'ctest_exit=%s\n' "$ctest_status"
-    printf 'fresh_gtk_test_processes=4\n'
+    printf 'fresh_gtk_test_processes=5\n'
 } | tee "$diagnostics/focused-core-result.txt"
 [[ "$ctest_status" -eq 0 ]]
-grep -F '100% tests passed, 0 tests failed out of 4' "$ctest_log"
+grep -F '100% tests passed, 0 tests failed out of 5' "$ctest_log"

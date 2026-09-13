@@ -31,9 +31,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant:
-          - baseline
-          - patched
+        # The pinned baseline already has a complete trace in run 34730055220.
+        # Manual A/B runs retain both variants; follow-up pushes test fixes only.
+        variant: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["baseline","patched"]' || '["patched"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,6 +70,8 @@ jobs:
             libpango1.0-dev \
             libpng-dev \
             libtiff-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
             libx11-dev \
             libxcursor-dev \
             libxdamage-dev \
@@ -83,6 +85,7 @@ jobs:
             ninja-build \
             pkg-config \
             sassc \
+            wayland-protocols \
             xauth \
             xvfb
 
@@ -114,6 +117,13 @@ jobs:
           ref: 8d86cf048bbf2094d481da87f44aad36693f3302
           path: gnucash-core
 
+      - name: Verify the three Popover lifecycle paths with patched GTK
+        if: ${{ matrix.variant == 'patched' }}
+        run: |
+          bash "$GITHUB_WORKSPACE/tests/gtk4-source-diagnostics/run-popover-regressions.sh" \
+            "$RUNNER_TEMP/gtk-column-focus-source-patched/gtk-build" \
+            "$RUNNER_TEMP/gtk-column-focus-source-patched-diagnostics"
+
       - name: Install GnuCash test dependencies
         if: ${{ matrix.variant == 'patched' }}
         run: |
@@ -123,7 +133,7 @@ jobs:
             libofx-dev libdbi-dev libdbd-sqlite3 libwebkitgtk-6.0-dev \
             googletest python3-dev swig language-pack-en language-pack-fr
 
-      - name: Run the four affected GnuCash tests with patched GTK
+      - name: Run the five affected GnuCash tests with patched GTK
         if: ${{ matrix.variant == 'patched' }}
         env:
           NINJA_JOBS: '3'

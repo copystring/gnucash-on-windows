@@ -9,6 +9,7 @@ readonly GTK_COMMIT='7f99ab1a26408b6499a18f353f081e3c0598ea5c'
 readonly GTK_TAG='4.22.4'
 readonly GTK_SOURCE_URL='https://gitlab.gnome.org/GNOME/gtk.git'
 readonly PATCH_SHA256='23046AF144974F7A91D6A2CDAD14F9DE6764A667077BBB9DC6FD1A0611B3D5F9'
+readonly FOCUS_PATCH_SHA256='061DBCA5582157BAB664A9E7805D42F0CD83EC5F8D61470DA2AD4705217623D8'
 readonly EXPECTED_BASELINE_EXIT=134
 readonly PROBE_ASSERTION_LINE=233
 
@@ -25,6 +26,7 @@ readonly gtk_build="${run_root}/gtk-build"
 readonly probe_build="${run_root}/probe-build"
 readonly diagnostics="${RUNNER_TEMP:?}/gtk-column-focus-source-${variant}-diagnostics"
 readonly patch_path="${source_dir}/gtkcolumnview-focus-column-ref.patch"
+readonly focus_patch="${GITHUB_WORKSPACE}/tests/gtk4-source-diagnostics/gtkwindow-deferred-focus-ref.patch"
 readonly ninja_jobs="${NINJA_JOBS:-3}"
 
 case "$ninja_jobs" in
@@ -94,8 +96,11 @@ checkout_gtk()
 apply_variant()
 {
     if [[ "$variant" == patched ]]; then
+        [[ "$(sha256sum "$focus_patch" | awk '{ print toupper($1) }')" == "$FOCUS_PATCH_SHA256" ]]
         git -C "$gtk_source" apply --check "$patch_path"
         git -C "$gtk_source" apply "$patch_path"
+        git -C "$gtk_source" apply --check "$focus_patch"
+        git -C "$gtk_source" apply "$focus_patch"
         git -C "$gtk_source" diff --check
     else
         git -C "$gtk_source" diff --exit-code
@@ -105,6 +110,7 @@ apply_variant()
         printf 'variant=%s\n' "$variant"
         git -C "$gtk_source" status --porcelain=v1
         sha256sum "$gtk_source/gtk/gtkcolumnview.c"
+        sha256sum "$gtk_source/gtk/gtkwindow.c" "$focus_patch"
     } | tee "$diagnostics/variant-source-state.txt"
 }
 
@@ -113,7 +119,7 @@ build_gtk_library()
     meson setup "$gtk_build" "$gtk_source" --buildtype=release --wrap-mode=nodownload \
         -Dbuild-demos=false -Dbuild-examples=false -Dbuild-tests=false \
         -Dbuild-testsuite=false -Ddocumentation=false -Dintrospection=disabled \
-        -Dx11-backend=true -Dwayland-backend=false -Dbroadway-backend=false \
+        -Dx11-backend=true -Dwayland-backend=true -Dbroadway-backend=false \
         -Dvulkan=disabled -Dmedia-gstreamer=disabled -Dprint-cpdb=disabled \
         -Dprint-cups=disabled -Dcloudproviders=disabled -Dsysprof=disabled \
         -Dtracker=disabled -Dcolord=disabled -Daccesskit=disabled \
@@ -136,17 +142,20 @@ build_probe()
 
 run_probe()
 {
+    local probe_variant="${1:-$variant}"
     local runtime_path="${gtk_build}/gtk:${gtk_build}/gdk:${gtk_build}/gsk"
-    local stdout="$diagnostics/probe.stdout.txt"
-    local stderr="$diagnostics/probe.stderr.txt"
-    local combined="$diagnostics/probe.combined.txt"
+    local stdout="$diagnostics/probe-${probe_variant}.stdout.txt"
+    local stderr="$diagnostics/probe-${probe_variant}.stderr.txt"
+    local combined="$diagnostics/probe-${probe_variant}.combined.txt"
     local native_exit
     local timed_out=false
 
     LD_LIBRARY_PATH="$runtime_path${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
         ldd "$probe_build/gtk-column-focus-ownership-probe" \
-        | tee "$diagnostics/probe-ldd.txt"
-    grep -F "$gtk_build/gtk/libgtk-4.so.1" "$diagnostics/probe-ldd.txt"
+        | tee "$diagnostics/probe-${probe_variant}-ldd.txt"
+    grep -F "$gtk_build/gtk/libgtk-4.so.1" "$diagnostics/probe-${probe_variant}-ldd.txt"
+    sha256sum "$gtk_build/gtk/libgtk-4.so.1" \
+        | tee "$diagnostics/gtk-library-${probe_variant}-sha256.txt"
 
     set +e
     timeout --signal=KILL --kill-after=2s 15s \
@@ -161,13 +170,13 @@ run_probe()
     fi
     cat "$stdout" "$stderr" | tee "$combined"
     {
-        printf 'variant=%s\n' "$variant"
+        printf 'variant=%s\n' "$probe_variant"
         printf 'native_exit=%s\n' "$native_exit"
         printf 'timed_out=%s\n' "$timed_out"
-    } | tee "$diagnostics/probe-result.txt"
+    } | tee "$diagnostics/probe-${probe_variant}-result.txt"
 
     [[ "$timed_out" == false ]]
-    if [[ "$variant" == baseline ]]; then
+    if [[ "$probe_variant" == baseline ]]; then
         [[ "$native_exit" -eq "$EXPECTED_BASELINE_EXIT" ]]
         grep -Eq "main\.c:${PROBE_ASSERTION_LINE}" "$combined"
         grep -Eq 'wait_until_finalized[[:space:]]*\(&successor_ref\)' "$combined"
@@ -178,7 +187,16 @@ run_probe()
 
 record_environment
 checkout_gtk
-apply_variant
 build_gtk_library
 build_probe
-run_probe
+run_probe baseline
+if [[ "$variant" == patched ]]; then
+    # Keep the A/B backend and toolchain contract identical. Build only once;
+    # applying the two fixes recompiles just the affected translation units.
+    bash "$GITHUB_WORKSPACE/tests/gtk4-source-diagnostics/run-popover-regressions.sh" \
+        "$gtk_build" "$diagnostics" baseline
+    apply_variant
+    meson compile -C "$gtk_build" -j "$ninja_jobs" gtk-4 \
+        2>&1 | tee "$diagnostics/gtk-patched-incremental-build.txt"
+    run_probe patched
+fi
