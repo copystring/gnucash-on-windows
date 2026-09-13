@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/gtk4-column-focus-source-ab.yml
       - tests/gtk4-column-focus-ownership-probe/**
+      - tests/gtk4-popover-ownership-probe/main.c
+      - tests/gtk4-popover-ownership-probe/CMakeLists.txt
+      - tests/gtk4-source-diagnostics/**
+      - tests/gnucash-gtk4-focused/**
   workflow_dispatch:
 
 permissions:
@@ -23,7 +27,7 @@ jobs:
       github.ref == 'refs/heads/fix/gtk4-ime-reproducer-20260912'
     name: GTK 4.22.4 source (${{ matrix.variant }})
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -33,7 +37,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: tests/gtk4-column-focus-ownership-probe
+          sparse-checkout: |
+            tests/gtk4-column-focus-ownership-probe
+            tests/gtk4-popover-ownership-probe
+            tests/gtk4-source-diagnostics
+            tests/gnucash-gtk4-focused
           sparse-checkout-cone-mode: true
 
       - name: Install GTK source-build and probe dependencies
@@ -43,8 +51,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             build-essential \
+            binutils \
             cmake \
             file \
+            gdb \
             git \
             libglib2.0-dev \
             libgtk-4-dev \
@@ -84,6 +94,46 @@ jobs:
           set -euo pipefail
           bash "$GITHUB_WORKSPACE/tests/gtk4-column-focus-ownership-probe/run-source-ab.sh" \
             "${{ matrix.variant }}"
+
+      - name: Trace retained Popover reference against fresh baseline GTK
+        if: ${{ matrix.variant == 'baseline' }}
+        shell: bash
+        env:
+          NINJA_JOBS: '3'
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/tests/gtk4-source-diagnostics/run-popover-reftrace.sh" \
+            "$RUNNER_TEMP/gtk-column-focus-source-baseline/gtk-build" \
+            "$RUNNER_TEMP/gtk-column-focus-source-baseline-diagnostics"
+
+      - name: Check out the focused GnuCash candidate
+        if: ${{ matrix.variant == 'patched' }}
+        uses: actions/checkout@v7
+        with:
+          repository: copystring/gnucash
+          ref: 8d86cf048bbf2094d481da87f44aad36693f3302
+          path: gnucash-core
+
+      - name: Install GnuCash test dependencies
+        if: ${{ matrix.variant == 'patched' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install --yes --no-install-recommends \
+            gettext libxslt1-dev xsltproc libboost-all-dev guile-2.2-dev \
+            libofx-dev libdbi-dev libdbd-sqlite3 libwebkitgtk-6.0-dev \
+            googletest python3-dev swig language-pack-en language-pack-fr
+
+      - name: Run the four affected GnuCash tests with patched GTK
+        if: ${{ matrix.variant == 'patched' }}
+        env:
+          NINJA_JOBS: '3'
+          TZ: America/Los_Angeles
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/tests/gnucash-gtk4-focused/run-focused-core.sh" \
+            "$GITHUB_WORKSPACE/gnucash-core" \
+            "$RUNNER_TEMP/gtk-column-focus-source-patched/gtk-build" \
+            "$RUNNER_TEMP/gtk-column-focus-source-patched-diagnostics"
 
       - name: Preserve source-build and probe evidence
         if: always()
