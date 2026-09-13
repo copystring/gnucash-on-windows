@@ -99,17 +99,28 @@ cmake --build "$build_dir" --parallel "$ninja_jobs" --target \
     test-import-account-matcher \
     2>&1 | tee "$diagnostics/focused-core-build.txt"
 
-readonly -a test_executables=(
-    "${build_dir}/gnucash/gnome/test/test-budget-view-column-ownership"
-    "${build_dir}/gnucash/gnome/test/test-plugin-page-budget-window-lifetime"
-    "${build_dir}/gnucash/gnome/test/test-dialog-sx-since-last-run-ownership"
-    "${build_dir}/gnucash/gnome-utils/test/test-tree-view-row-ownership"
-    "${build_dir}/gnucash/import-export/test/test-import-account-matcher"
-)
+# CMake can place executables outside their source subdirectories. Read the
+# actual registered commands instead of assuming an output-directory layout.
+ctest --test-dir "$build_dir" --show-only=json-v1 --tests-regex "$test_regex" \
+    >"$diagnostics/focused-core-registered-tests.json"
+test_programs="$(python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    tests = json.load(source)["tests"]
+assert len(tests) == 5, "Expected exactly five registered tests"
+for test in tests:
+    assert len(test["command"]) == 1, test
+    print(test["command"][0])
+' "$diagnostics/focused-core-registered-tests.json")"
+mapfile -t test_executables <<<"$test_programs"
+readonly -a test_executables
 
 : >"$diagnostics/focused-core-ldd.txt"
 for executable in "${test_executables[@]}"; do
-    test -x "$executable"
+    if [[ ! -x "$executable" ]]; then
+        printf 'Registered test executable is missing: %s\n' "$executable" >&2
+        exit 1
+    fi
     loader_result="$(LD_LIBRARY_PATH="$gtk_runtime_path${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
         ldd "$executable")"
     {
