@@ -137,12 +137,13 @@ jobs:
             loaded_dll="$(tr -d '\r' < "${log}" | sed -n 's/^# loaded_gtk_dll=//p' | tail -n 1)"
             expected_dll="$(cygpath -w /ucrt64/bin/libgtk-4-1.dll)"
             test "${loaded_dll,,}" = "${expected_dll,,}"
-            tr -d '\r' < "${log}" | grep -Fxq '1..1'
             if [[ "${expected}" == pass ]]; then
               test "${status}" -eq 0
+              tr -d '\r' < "${log}" | grep -Fxq '1..1'
               tr -d '\r' < "${log}" | grep -Fxq "ok 1 ${path}"
             else
               test "${status}" -ne 0
+              grep -Fq "not ok ${path} - " "${log}"
               grep -Eq 'GTK_IS_IM_CONTEXT_IME' "${log}"
             fi
           }
