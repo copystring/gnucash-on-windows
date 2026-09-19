@@ -11,6 +11,7 @@ on:
       - tests/gtk4-popover-ownership-probe/CMakeLists.txt
       - tests/gtk4-source-diagnostics/**
       - tests/gnucash-gtk4-focused/**
+      - tests/gnucash-gtk4-wayland/**
   workflow_dispatch:
 
 permissions:
@@ -42,6 +43,7 @@ jobs:
             tests/gtk4-popover-ownership-probe
             tests/gtk4-source-diagnostics
             tests/gnucash-gtk4-focused
+            tests/gnucash-gtk4-wayland
           sparse-checkout-cone-mode: true
 
       - name: Install GTK source-build and probe dependencies
@@ -88,6 +90,8 @@ jobs:
             pkg-config \
             sassc \
             wayland-protocols \
+            wayland-utils \
+            weston \
             xauth \
             xvfb
 
@@ -116,7 +120,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: copystring/gnucash
-          ref: ba3cff738d8005605658baefc6b00b2c27328016
+          ref: b92b84f846c5e6ab080758fab1daab2a058659f4
           path: gnucash-core
 
       - name: Verify the three Popover lifecycle paths with patched GTK
@@ -136,6 +140,7 @@ jobs:
             googletest python3-dev swig language-pack-en language-pack-fr
 
       - name: Run the six affected GnuCash tests with patched GTK
+        id: focused_core
         if: ${{ matrix.variant == 'patched' }}
         env:
           NINJA_JOBS: '3'
@@ -146,6 +151,42 @@ jobs:
             "$GITHUB_WORKSPACE/gnucash-core" \
             "$RUNNER_TEMP/gtk-column-focus-source-patched/gtk-build" \
             "$RUNNER_TEMP/gtk-column-focus-source-patched-diagnostics"
+
+      - name: Re-run the five GUI regressions on headless Wayland
+        if: ${{ matrix.variant == 'patched' }}
+        env:
+          TZ: America/Los_Angeles
+        run: |
+          set -euo pipefail
+          diagnostics="$RUNNER_TEMP/gtk-column-focus-source-patched-diagnostics"
+          build_dir="$(sed -n 's/^focused_core_build_dir=//p' "$diagnostics/focused-core-result.txt")"
+          test -d "$build_dir"
+          bash "$GITHUB_WORKSPACE/tests/gnucash-gtk4-wayland/run-registered-tests.sh" \
+            "$build_dir" \
+            "$RUNNER_TEMP/gtk-column-focus-source-patched/gtk-build" \
+            "$diagnostics/wayland"
+
+      - name: Run the complete Core check target with patched GTK
+        if: ${{ !cancelled() && matrix.variant == 'patched' && steps.focused_core.outcome == 'success' }}
+        env:
+          TZ: America/Los_Angeles
+        run: |
+          set -euo pipefail
+          diagnostics="$RUNNER_TEMP/gtk-column-focus-source-patched-diagnostics"
+          build_dir="$(sed -n 's/^focused_core_build_dir=//p' "$diagnostics/focused-core-result.txt")"
+          gtk_build="$RUNNER_TEMP/gtk-column-focus-source-patched/gtk-build"
+          gtk_runtime_path="$gtk_build/gtk:$gtk_build/gdk:$gtk_build/gsk"
+          test -d "$build_dir"
+          set +e
+          env LD_LIBRARY_PATH="$gtk_runtime_path${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+            CTEST_OUTPUT_ON_FAILURE=1 \
+            timeout --foreground 30m cmake --build "$build_dir" --parallel 3 --target check \
+            2>&1 | tee "$diagnostics/full-core-check.txt"
+          check_status=${PIPESTATUS[0]}
+          set -e
+          cp -a "$build_dir/Testing" "$diagnostics/full-core-Testing"
+          printf 'check_exit=%s\n' "$check_status" | tee "$diagnostics/full-core-result.txt"
+          [[ "$check_status" -eq 0 ]]
 
       - name: Preserve source-build and probe evidence
         if: always()
