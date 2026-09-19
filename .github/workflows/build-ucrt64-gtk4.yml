@@ -45,31 +45,18 @@ jobs:
             "run_attempt=$env:GITHUB_RUN_ATTEMPT"
           ) | Set-Content -LiteralPath repo-out/RUN-CONTEXT.txt -Encoding utf8NoBOM
 
-      # Package upgrades are performed in separate MSYS2 processes below so a
-      # runtime update is not followed by dependency installation in the same
-      # process. This also lets transient mirror failures retry on one runner.
+      # setup-msys2 handles the runtime upgrade that terminates MSYS2 shells.
+      # A shell-level retry cannot survive that required process shutdown.
       - uses: msys2/setup-msys2@v2
+        timeout-minutes: 15
         with:
           msystem: UCRT64
-          update: false
+          update: true
 
       - name: Configure bounded Pacman downloads
         run: |
           set -euo pipefail
-          exec > >(tee -a repo-out/pacman-system-update.log) 2>&1
-          sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf
-
-          for attempt in 1 2 3; do
-            echo "Pacman system-update attempt ${attempt}/3"
-            if timeout --foreground 15m pacman -Syu --noconfirm; then
-              exit 0
-            fi
-            if [[ "$attempt" -lt 3 ]]; then
-              sleep 15
-            fi
-          done
-          echo 'Pacman system update failed after three bounded attempts.' >&2
-          exit 1
+          sed -i 's/^#\s*ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf
 
       - name: Install the official recipe dependencies with bounded retries
         run: |
@@ -90,9 +77,8 @@ jobs:
             return 1
           }
 
-          # Complete a possible two-stage MSYS2 runtime update in this fresh
-          # shell, then install exactly the official PKGBUILD dependency sets.
-          pacman_retry -Syu --noconfirm
+          # The runtime upgrade has completed in setup-msys2. Install exactly
+          # the official PKGBUILD dependency sets in this new process.
           cd packages/gtk4
           source ./PKGBUILD
           pacman_retry -S --needed --noconfirm \
