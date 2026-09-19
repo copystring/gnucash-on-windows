@@ -105,8 +105,11 @@ run_scenario (Scenario scenario)
   g_object_unref (context);
   g_assert_true (finalized);
 
-  /* Closing a real native window dispatches WM_SHOWWINDOW through GDK's
-   * display filters, just like closing GnuCash's transfer dialog. */
+  /* Dispatch a harmless native message even if presentation is deferred.
+   * GDK applies the display filters before translating the message type. */
+  SendMessageW (hwnd, WM_NULL, 0, 0);
+  /* Closing a mapped window also dispatches WM_SHOWWINDOW, just like closing
+   * GnuCash's transfer dialog. */
   gtk_window_destroy (GTK_WINDOW (window));
   g_object_unref (window);
 }
