@@ -166,4 +166,5 @@ grep -l -F "calling init: $gtk_dso" "$diagnostics"/focused-core-loader.* \
     printf 'fresh_gtk_test_processes=5\n'
 } | tee "$diagnostics/focused-core-result.txt"
 [[ "$ctest_status" -eq 0 ]]
-grep -F '100% tests passed, 0 tests failed out of 6' "$ctest_log"
+# CTest versions differ in whether the zero-failures clause is printed.
+grep -E '^100% tests passed(, 0 tests failed)? out of 6$' "$ctest_log"
