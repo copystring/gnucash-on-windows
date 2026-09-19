@@ -1,0 +1,34 @@
+name: GTK4 reviewed installer
+
+on:
+  push:
+    branches:
+      - fix/gtk4-ime-reproducer-20260912
+    paths:
+      - '.github/workflows/gtk4-reviewed-installer.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: gtk4-reviewed-installer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reviewed-installer:
+    if: >-
+      github.repository == 'copystring/gnucash-on-windows' &&
+      github.ref == 'refs/heads/fix/gtk4-ime-reproducer-20260912'
+    uses: ./.github/workflows/gnucash-ucrt64-nightly.yml
+    with:
+      gnucash_repository: copystring/gnucash
+      gnucash_ref: a7f4c0e429ca71074581738090ec170d7e00ee59
+      docs_repository: copystring/gnucash-docs
+      docs_ref: 824a138e8588264c971bb58ad9dacd34420a6bd4
+      # Pin the packaging recipe and fixtures to this candidate.
+      buildsupport_ref: ${{ github.sha }}
+      gtk4_runtime_artifact_run_id: '35438550013'
+      gtk4_expected_recipe_sha: df6bbff86d73086d4adc98c2acc80b420331945d
+      dependency_overlay_name: gnc-ucrt64-gtk4
+      dependency_overlay_url: https://github.com/copystring/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-gtk4-reviewed-20260905-be306f4c
