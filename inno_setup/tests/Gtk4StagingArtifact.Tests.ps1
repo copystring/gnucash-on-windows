@@ -77,6 +77,51 @@ try {
     Assert-True ($validated_runtime -ceq (Resolve-Path $valid.RuntimePath).Path) `
         'The validator did not return the verified runtime package path.'
 
+    # actions/upload-artifact preserves repo-out because the producer also
+    # uploads diagnostics from packages/gtk4 below their common workspace root.
+    $archive_source = Join-Path $test_root 'archive-source'
+    $archive_payload = New-Fixture (Join-Path $archive_source 'repo-out')
+    $archive_diagnostics = Join-Path $archive_source 'packages\gtk4'
+    New-Item -ItemType Directory -Path $archive_diagnostics -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $archive_diagnostics 'build.log') `
+        -Value 'diagnostic' -Encoding utf8NoBOM
+    $archive_path = Join-Path $test_root 'artifact.zip'
+    Compress-Archive -Path (Join-Path $archive_source '*') -DestinationPath $archive_path
+    $download_root = Join-Path $test_root 'download'
+    Expand-Archive -LiteralPath $archive_path -DestinationPath $download_root
+
+    $download_root_rejected = $false
+    try {
+        & $validator -ArtifactDirectory $download_root `
+            -ExpectedRecipeCommit $recipe_commit | Out-Null
+    }
+    catch {
+        $download_root_rejected = $_.Exception.Message -eq `
+            'The GTK staging artifact does not contain manifest.json.'
+    }
+    Assert-True $download_root_rejected `
+        'The artifact download root unexpectedly behaved like the payload root.'
+
+    $download_payload = Join-Path $download_root 'repo-out'
+    $validated_archive_runtime = & $validator -ArtifactDirectory $download_payload `
+        -ExpectedRecipeCommit $recipe_commit
+    Assert-True ($validated_archive_runtime -ceq `
+        (Resolve-Path (Join-Path $download_payload $archive_payload.RuntimeName)).Path) `
+        'The validator did not accept the explicit repo-out payload from the extracted artifact ZIP.'
+
+    $consumer_workflow_path = (Resolve-Path `
+        (Join-Path $PSScriptRoot '..\..\.github\workflows\gnucash-ucrt64-nightly.yml')).Path
+    $consumer_workflow = Get-Content -LiteralPath $consumer_workflow_path -Raw
+    Assert-True ($consumer_workflow.Contains(
+        '$artifact_payload_directory = Join-Path $artifact_directory ''repo-out''')) `
+        'The consumer workflow does not select the producer repo-out payload root.'
+    Assert-True ($consumer_workflow.Contains(
+        '-ArtifactDirectory $artifact_payload_directory -ExpectedRecipeCommit $expected_sha')) `
+        'The consumer workflow does not validate the explicit repo-out payload root.'
+    Assert-True ($consumer_workflow.Contains(
+        '$debug_package = Join-Path $artifact_payload_directory')) `
+        'The consumer workflow does not select the debug package from the validated payload root.'
+
     $wrong_commit_rejected = $false
     try {
         & $validator -ArtifactDirectory (Split-Path $valid.RuntimePath) `
