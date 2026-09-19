@@ -124,13 +124,14 @@ jobs:
             install: git
             pacboy: toolchain:p cmake:p ninja:p
 
-        - name: Checkout our inno_setup and extra_dist directories
+        - name: Checkout packaging sources and workflow contracts
           uses: actions/checkout@v7
           with:
             ref: ${{ inputs.buildsupport_ref || (github.event_name == 'workflow_dispatch' && github.sha || 'future') }}
             sparse-checkout: |
                 extra_dist
                 inno_setup
+                .github/workflows
 
         - name: Verify and download optional GTK4 staging artifact
           if: ${{ inputs.gtk4_runtime_artifact_run_id != '' || inputs.gtk4_expected_recipe_sha != '' }}

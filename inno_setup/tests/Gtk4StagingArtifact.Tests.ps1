@@ -112,6 +112,8 @@ try {
     $consumer_workflow_path = (Resolve-Path `
         (Join-Path $PSScriptRoot '..\..\.github\workflows\gnucash-ucrt64-nightly.yml')).Path
     $consumer_workflow = Get-Content -LiteralPath $consumer_workflow_path -Raw
+    Assert-True ($consumer_workflow -match '(?m)^\s+\.github/workflows\s*$') `
+        'The sparse checkout does not include the workflow contracts used by these tests.'
     Assert-True ($consumer_workflow.Contains(
         '$artifact_payload_directory = Join-Path $artifact_directory ''repo-out''')) `
         'The consumer workflow does not select the producer repo-out payload root.'
