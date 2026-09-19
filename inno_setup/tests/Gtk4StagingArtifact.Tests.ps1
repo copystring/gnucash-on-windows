@@ -17,7 +17,7 @@ function New-Fixture {
 
     New-Item -ItemType Directory -Path $Path | Out-Null
     $runtime_name = 'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-any.pkg.tar.zst'
-    $debug_name = 'mingw-w64-ucrt-x86_64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst'
+    $debug_name = 'mingw-w64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst'
     [IO.File]::WriteAllBytes((Join-Path $Path $runtime_name), [byte[]](1, 2, 3, 4))
     [IO.File]::WriteAllBytes((Join-Path $Path $debug_name), [byte[]](5, 6, 7, 8))
     $runtime_hash = (Get-FileHash -LiteralPath (Join-Path $Path $runtime_name) -Algorithm SHA256).Hash.ToLowerInvariant()

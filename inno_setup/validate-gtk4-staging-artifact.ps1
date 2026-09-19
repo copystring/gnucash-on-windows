@@ -90,7 +90,7 @@ foreach ($patch in @($manifest.patches)) {
 
 $expected_packages = @{
     'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-any.pkg.tar.zst' = 'runtime'
-    'mingw-w64-ucrt-x86_64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst' = 'debug'
+    'mingw-w64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst' = 'debug'
 }
 Assert-Contract (@($manifest.packages).Count -eq $expected_packages.Count) `
     'The GTK staging manifest must contain exactly one runtime and one debug package.'
