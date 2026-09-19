@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-readonly CORE_COMMIT='d2326051de0ad768cb82e7b3d09983ca7a0f585e'
+readonly CORE_COMMIT='ba3cff738d8005605658baefc6b00b2c27328016'
 
 if [[ $# -ne 3 ]]; then
     echo "usage: $0 CORE_SOURCE GTK_BUILD DIAGNOSTICS" >&2
@@ -18,7 +18,7 @@ readonly diagnostics="$3"
 readonly gtk_dso="${gtk_build}/gtk/libgtk-4.so.1"
 readonly gtk_runtime_path="${gtk_build}/gtk:${gtk_build}/gdk:${gtk_build}/gsk"
 readonly ninja_jobs="${NINJA_JOBS:-3}"
-readonly test_regex='^(test-budget-view-column-ownership|test-plugin-page-budget-window-lifetime|test-dialog-sx-since-last-run-ownership|test-tree-view-row-ownership|test-import-account-matcher)$'
+readonly test_regex='^(test-account-object|test-budget-view-column-ownership|test-plugin-page-budget-window-lifetime|test-dialog-sx-since-last-run-ownership|test-tree-view-row-ownership|test-import-account-matcher)$'
 
 case "$ninja_jobs" in
     1|2|3) ;;
@@ -85,13 +85,14 @@ test -r "$gnome_utils_ctest_file"
 grep -F "$gtk_runtime_path" "$gnome_ctest_file" |
     tee "$diagnostics/focused-core-registered-guile-runtime.txt"
 
-# compiled-schemas provides the explicit GSettings dependency of all five
+# compiled-schemas provides the explicit GSettings dependency of the five GUI
 # tests. scm-gnome is the product Guile target required by the dialog test;
 # its declared dependencies build the corresponding engine/application Scheme
-# modules. The remaining targets are the five registered test executables.
+# modules. Also build the engine-only root-account ownership regression.
 cmake --build "$build_dir" --parallel "$ninja_jobs" --target \
     compiled-schemas \
     scm-gnome \
+    test-account-object \
     test-budget-view-column-ownership \
     test-plugin-page-budget-window-lifetime \
     test-dialog-sx-since-last-run-ownership \
@@ -107,9 +108,11 @@ test_programs="$(python3 -c '
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as source:
     tests = json.load(source)["tests"]
-assert len(tests) == 5, "Expected exactly five registered tests"
+assert len(tests) == 6, "Expected exactly six registered tests"
 for test in tests:
     assert len(test["command"]) == 1, test
+    if test["name"] == "test-account-object":
+        continue  # The engine-only test does not link GTK.
     print(test["command"][0])
 ' "$diagnostics/focused-core-registered-tests.json")"
 mapfile -t test_executables <<<"$test_programs"
@@ -159,7 +162,8 @@ grep -l -F "calling init: $gtk_dso" "$diagnostics"/focused-core-loader.* \
 {
     printf 'focused_core_build_dir=%s\n' "$build_dir"
     printf 'ctest_exit=%s\n' "$ctest_status"
+    printf 'registered_core_tests=6\n'
     printf 'fresh_gtk_test_processes=5\n'
 } | tee "$diagnostics/focused-core-result.txt"
 [[ "$ctest_status" -eq 0 ]]
-grep -F '100% tests passed, 0 tests failed out of 5' "$ctest_log"
+grep -F '100% tests passed, 0 tests failed out of 6' "$ctest_log"

@@ -116,7 +116,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: copystring/gnucash
-          ref: d2326051de0ad768cb82e7b3d09983ca7a0f585e
+          ref: ba3cff738d8005605658baefc6b00b2c27328016
           path: gnucash-core
 
       - name: Verify the three Popover lifecycle paths with patched GTK
@@ -135,7 +135,7 @@ jobs:
             libofx-dev libdbi-dev libdbd-sqlite3 libwebkitgtk-6.0-dev \
             googletest python3-dev swig language-pack-en language-pack-fr
 
-      - name: Run the five affected GnuCash tests with patched GTK
+      - name: Run the six affected GnuCash tests with patched GTK
         if: ${{ matrix.variant == 'patched' }}
         env:
           NINJA_JOBS: '3'
