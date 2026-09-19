@@ -118,10 +118,29 @@ jobs:
 
           grep -Fq 'g_clear_object (&item);' src/gtk-4.24.0/gtk/gtkcolumnview.c
 
+          shopt -s nullglob
           main_packages=(mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-*.pkg.tar.zst)
-          debug_packages=(mingw-w64-ucrt-x86_64-gtk4-debug-4.24.0-1.1-*.pkg.tar.zst)
-          [[ -e "${main_packages[0]}" ]]
-          [[ -e "${debug_packages[0]}" ]]
+          debug_packages=(mingw-w64-gtk4-debug-4.24.0-1.1-*.pkg.tar.zst)
+          (( ${#main_packages[@]} == 1 ))
+          (( ${#debug_packages[@]} == 1 ))
+
+          runtime_metadata=$(bsdtar -xOf "${main_packages[0]}" .PKGINFO)
+          grep -Fxq 'pkgname = mingw-w64-ucrt-x86_64-gtk4' <<< "$runtime_metadata"
+          grep -Fxq 'pkgbase = mingw-w64-gtk4' <<< "$runtime_metadata"
+          grep -Fxq 'pkgver = 4.24.0-1.1' <<< "$runtime_metadata"
+          grep -Fxq 'arch = any' <<< "$runtime_metadata"
+
+          debug_metadata=$(bsdtar -xOf "${debug_packages[0]}" .PKGINFO)
+          grep -Fxq 'pkgname = mingw-w64-gtk4-debug' <<< "$debug_metadata"
+          grep -Fxq 'pkgbase = mingw-w64-gtk4' <<< "$debug_metadata"
+          grep -Fxq 'pkgver = 4.24.0-1.1' <<< "$debug_metadata"
+          grep -Fxq 'arch = any' <<< "$debug_metadata"
+          debug_contents=$(bsdtar -tf "${debug_packages[0]}")
+          grep -Fxq 'ucrt64/bin/libgtk-4-1.dll.debug' <<< "$debug_contents"
+          if grep -Eq '^(mingw32|mingw64|clang64|clangarm64)/' <<< "$debug_contents"; then
+            echo 'Debug package contains symbols for an unexpected MSYS2 environment.' >&2
+            exit 1
+          fi
           cp "${main_packages[@]}" "${debug_packages[@]}" "$repo_out/"
 
       - name: Record package provenance and hashes

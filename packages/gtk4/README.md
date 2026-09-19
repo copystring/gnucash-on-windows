@@ -20,8 +20,13 @@ The local delta is deliberately limited to:
 2. The repository-standard `debug`, `strip`, and `buildflags` package options.
    Meson uses `buildtype=release` and `debug=true`, retaining release
    optimization while makepkg preserves and splits the symbols. A successful
-   build requires both the runtime and separate debug package. Failed runs
-   still upload their diagnostics.
+   build requires both the UCRT64 runtime and separate debug package. MSYS2
+   names that automatically generated package `mingw-w64-gtk4-debug` from the
+   recipe's `pkgbase`; its generic name does not identify the target
+   environment. The workflow therefore verifies its `.PKGINFO` identity and
+   version, requires the UCRT64 GTK DLL's detached symbols under `ucrt64/`, and
+   rejects payload paths for the other MSYS2 environments. Failed runs still
+   upload their diagnostics.
 3. `gtkcolumnview-focus-column-ref.patch`, SHA-256
    `23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9`.
    It releases the owned reference returned by `g_list_model_get_item()` after
