@@ -27,7 +27,7 @@ jobs:
       docs_repository: copystring/gnucash-docs
       docs_ref: 824a138e8588264c971bb58ad9dacd34420a6bd4
       # Pin the packaging recipe and fixtures to this candidate.
-      # Trigger revision 2: consume the producer's repo-out payload root.
+      # Trigger revision 3: accept GNU sha256sum text and binary markers.
       buildsupport_ref: ${{ github.sha }}
       gtk4_runtime_artifact_run_id: '35438550013'
       gtk4_expected_recipe_sha: df6bbff86d73086d4adc98c2acc80b420331945d

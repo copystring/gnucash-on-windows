@@ -130,10 +130,12 @@ Assert-Contract ($sum_lines.Count -eq $expected_packages.Count) `
     'SHA256SUMS must contain exactly the runtime and debug package entries.'
 $sum_hashes = @{}
 foreach ($line in $sum_lines) {
-    Assert-Contract ($line -cmatch '^([0-9a-f]{64})  ([^/\\]+)$') `
+    # GNU sha256sum writes one separator space followed by a mode marker:
+    # another space for text mode or '*' for binary mode.
+    Assert-Contract ($line -cmatch '^([0-9a-f]{64}) ([ *])([^/\\]+)$') `
         "Invalid SHA256SUMS entry '$line'."
     $sum_hash = $Matches[1]
-    $sum_name = $Matches[2]
+    $sum_name = $Matches[3]
     Assert-Contract $manifest_hashes.ContainsKey($sum_name) `
         "SHA256SUMS contains unexpected package '$sum_name'."
     Assert-Contract (!$sum_hashes.ContainsKey($sum_name)) `

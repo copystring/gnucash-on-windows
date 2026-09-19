@@ -59,7 +59,7 @@ function New-Fixture {
     $manifest | ConvertTo-Json -Depth 8 |
         Set-Content -LiteralPath (Join-Path $Path 'manifest.json') -Encoding utf8NoBOM
     @(
-        "$debug_hash  $debug_name"
+        "$debug_hash *$debug_name"
         "$runtime_hash  $runtime_name"
     ) | Set-Content -LiteralPath (Join-Path $Path 'SHA256SUMS') -Encoding utf8NoBOM
     return [pscustomobject]@{
@@ -144,6 +144,23 @@ try {
         $tamper_rejected = $_.Exception.Message -like 'SHA-256 mismatch for GTK staging package*'
     }
     Assert-True $tamper_rejected 'A package whose content did not match the manifest was accepted.'
+
+    $invalid_marker = New-Fixture (Join-Path $test_root 'invalid-checksum-marker')
+    $invalid_marker_sums = Join-Path (Split-Path $invalid_marker.RuntimePath) 'SHA256SUMS'
+    $invalid_marker_lines = @(Get-Content -LiteralPath $invalid_marker_sums)
+    $invalid_marker_lines[0] = $invalid_marker_lines[0] -replace ' \*', ' ?'
+    $invalid_marker_lines | Set-Content -LiteralPath $invalid_marker_sums -Encoding utf8NoBOM
+    $invalid_marker_rejected = $false
+    try {
+        & $validator -ArtifactDirectory (Split-Path $invalid_marker.RuntimePath) `
+            -ExpectedRecipeCommit $recipe_commit | Out-Null
+    }
+    catch {
+        $invalid_marker_rejected = $_.Exception.Message -like `
+            'Invalid SHA256SUMS entry*'
+    }
+    Assert-True $invalid_marker_rejected `
+        'A SHA256SUMS entry with an unsupported mode marker was accepted.'
 
     $wrong_arch = New-Fixture (Join-Path $test_root 'wrong-architecture')
     $wrong_arch_manifest = Get-Content -LiteralPath $wrong_arch.ManifestPath -Raw | ConvertFrom-Json
