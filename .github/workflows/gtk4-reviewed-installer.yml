@@ -23,13 +23,13 @@ jobs:
     uses: ./.github/workflows/gnucash-ucrt64-nightly.yml
     with:
       gnucash_repository: copystring/gnucash
-      gnucash_ref: a7f4c0e429ca71074581738090ec170d7e00ee59
+      gnucash_ref: 11ff096e73c2c3755f65e9ec5ddbd304d2f5d10e
       docs_repository: copystring/gnucash-docs
       docs_ref: 824a138e8588264c971bb58ad9dacd34420a6bd4
-      # Pin the packaging recipe and fixtures to this candidate.
-      # Trigger revision 4: include workflow contracts in the sparse checkout.
+      # Trigger revision 5: run the verified GTK 4.24.0-1.2 producer package
+      # through the full GnuCash Core check with the pinned docs revision.
       buildsupport_ref: ${{ github.sha }}
-      gtk4_runtime_artifact_run_id: '35438550013'
-      gtk4_expected_recipe_sha: df6bbff86d73086d4adc98c2acc80b420331945d
+      gtk4_runtime_artifact_run_id: '35445277540'
+      gtk4_expected_recipe_sha: 7dab813ab1ffbfcfb2a78584e1d692aac5099da3
       dependency_overlay_name: gnc-ucrt64-gtk4
       dependency_overlay_url: https://github.com/copystring/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-gtk4-reviewed-20260905-be306f4c

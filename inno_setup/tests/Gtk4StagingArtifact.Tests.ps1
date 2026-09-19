@@ -16,18 +16,18 @@ function New-Fixture {
     param([string]$Path)
 
     New-Item -ItemType Directory -Path $Path | Out-Null
-    $runtime_name = 'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-any.pkg.tar.zst'
-    $debug_name = 'mingw-w64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst'
+    $runtime_name = 'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.2-any.pkg.tar.zst'
+    $debug_name = 'mingw-w64-gtk4-debug-4.24.0-1.2-any.pkg.tar.zst'
     [IO.File]::WriteAllBytes((Join-Path $Path $runtime_name), [byte[]](1, 2, 3, 4))
     [IO.File]::WriteAllBytes((Join-Path $Path $debug_name), [byte[]](5, 6, 7, 8))
     $runtime_hash = (Get-FileHash -LiteralPath (Join-Path $Path $runtime_name) -Algorithm SHA256).Hash.ToLowerInvariant()
     $debug_hash = (Get-FileHash -LiteralPath (Join-Path $Path $debug_name) -Algorithm SHA256).Hash.ToLowerInvariant()
     $manifest = [ordered]@{
         schemaVersion = 1
-        artifactName = 'ucrt64-gtk4-4.24.0-1.1-column-focus'
+        artifactName = 'ucrt64-gtk4-4.24.0-1.2-column-focus-ime'
         stagingRecipeCommit = $recipe_commit
         pkgbuildSha256 = ('a' * 64)
-        packageVersion = '4.24.0-1.1'
+        packageVersion = '4.24.0-1.2'
         architecture = 'ucrt64'
         recipe = [ordered]@{
             repository = 'https://github.com/msys2/MINGW-packages'
@@ -49,8 +49,17 @@ function New-Fixture {
                 name = 'gtkcolumnview-focus-column-ref.patch'
                 sha256 = '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
                 origin = 'temporary-gnucash-staging'
+            },
+            [ordered]@{
+                name = 'gtkimcontextime-filter-lifetime.patch'
+                sha256 = '402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+                origin = 'temporary-gnucash-staging'
             }
         )
+        regressionFixture = [ordered]@{
+            name = 'test-ime-filter-lifetime.c'
+            sha256 = ('c' * 64)
+        }
         packages = @(
             [ordered]@{ name = $debug_name; sha256 = $debug_hash; kind = 'debug' },
             [ordered]@{ name = $runtime_name; sha256 = $runtime_hash; kind = 'runtime' }
@@ -184,7 +193,8 @@ try {
         ConvertFrom-Json
     $duplicate_patch_manifest.patches = @(
         $duplicate_patch_manifest.patches[0],
-        $duplicate_patch_manifest.patches[0]
+        $duplicate_patch_manifest.patches[0],
+        $duplicate_patch_manifest.patches[1]
     )
     $duplicate_patch_manifest | ConvertTo-Json -Depth 8 |
         Set-Content -LiteralPath $duplicate_patch.ManifestPath -Encoding utf8NoBOM
@@ -198,7 +208,7 @@ try {
             "Duplicate GTK staging patch '001-fix-font-rendering.patch'."
     }
     Assert-True $duplicate_patch_rejected `
-        'A patch list that omitted ColumnView by duplicating the font patch was accepted.'
+        'A patch list with a duplicate reviewed patch was accepted.'
 }
 finally {
     Remove-Item -LiteralPath $test_root -Recurse -Force -ErrorAction SilentlyContinue

@@ -32,16 +32,17 @@ Assert-Contract (Test-Path -LiteralPath $manifest_path -PathType Leaf) `
 $manifest = Get-Content -LiteralPath $manifest_path -Raw | ConvertFrom-Json
 Assert-PropertySet $manifest @(
     'schemaVersion', 'artifactName', 'stagingRecipeCommit', 'pkgbuildSha256',
-    'packageVersion', 'architecture', 'recipe', 'source', 'patches', 'packages'
+    'packageVersion', 'architecture', 'recipe', 'source', 'patches',
+    'regressionFixture', 'packages'
 ) 'manifest'
 Assert-Contract ($manifest.schemaVersion -eq 1) 'Unsupported GTK staging manifest schema.'
-Assert-Contract ($manifest.artifactName -ceq 'ucrt64-gtk4-4.24.0-1.1-column-focus') `
+Assert-Contract ($manifest.artifactName -ceq 'ucrt64-gtk4-4.24.0-1.2-column-focus-ime') `
     'Unexpected GTK staging artifact name.'
 Assert-Contract ($manifest.stagingRecipeCommit -ceq $ExpectedRecipeCommit.ToLowerInvariant()) `
     'The manifest staging recipe commit does not match the requested commit.'
 Assert-Contract ($manifest.pkgbuildSha256 -cmatch '^[0-9a-f]{64}$') `
     'The manifest PKGBUILD SHA-256 is not a lowercase SHA-256 value.'
-Assert-Contract ($manifest.packageVersion -ceq '4.24.0-1.1') `
+Assert-Contract ($manifest.packageVersion -ceq '4.24.0-1.2') `
     'Unexpected GTK staging package version.'
 Assert-Contract ($manifest.architecture -ceq 'ucrt64') 'Unexpected GTK staging architecture.'
 
@@ -70,9 +71,13 @@ $expected_patches = @{
         sha256 = '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
         origin = 'temporary-gnucash-staging'
     }
+    'gtkimcontextime-filter-lifetime.patch' = @{
+        sha256 = '402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+        origin = 'temporary-gnucash-staging'
+    }
 }
 Assert-Contract (@($manifest.patches).Count -eq $expected_patches.Count) `
-    'The GTK staging manifest must contain exactly the two reviewed patches.'
+    'The GTK staging manifest must contain exactly the three reviewed patches.'
 $seen_patches = @{}
 foreach ($patch in @($manifest.patches)) {
     Assert-PropertySet $patch @('name', 'sha256', 'origin') "patch '$($patch.name)'"
@@ -88,9 +93,15 @@ foreach ($patch in @($manifest.patches)) {
         "Unexpected origin for GTK staging patch '$($patch.name)'."
 }
 
+Assert-PropertySet $manifest.regressionFixture @('name', 'sha256') 'regressionFixture'
+Assert-Contract ($manifest.regressionFixture.name -ceq 'test-ime-filter-lifetime.c') `
+    'Unexpected GTK regression fixture name.'
+Assert-Contract ($manifest.regressionFixture.sha256 -cmatch '^[0-9a-f]{64}$') `
+    'The GTK regression fixture SHA-256 is not a lowercase SHA-256 value.'
+
 $expected_packages = @{
-    'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-any.pkg.tar.zst' = 'runtime'
-    'mingw-w64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst' = 'debug'
+    'mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.2-any.pkg.tar.zst' = 'runtime'
+    'mingw-w64-gtk4-debug-4.24.0-1.2-any.pkg.tar.zst' = 'debug'
 }
 Assert-Contract (@($manifest.packages).Count -eq $expected_packages.Count) `
     'The GTK staging manifest must contain exactly one runtime and one debug package.'

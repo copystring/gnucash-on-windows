@@ -143,7 +143,7 @@ jobs:
           run: |
             $ErrorActionPreference = 'Stop'
             $repository = 'copystring/gnucash-on-windows'
-            $artifact_name = 'ucrt64-gtk4-4.24.0-1.1-column-focus'
+            $artifact_name = 'ucrt64-gtk4-4.24.0-1.2-column-focus-ime'
             if ($Env:GTK4_RUN_ID -notmatch '^[1-9][0-9]*$') {
               throw 'gtk4_runtime_artifact_run_id must be a positive numeric Actions run ID.'
             }
@@ -181,7 +181,7 @@ jobs:
                 -ArtifactDirectory $artifact_payload_directory -ExpectedRecipeCommit $expected_sha
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $debug_package = Join-Path $artifact_payload_directory `
-                'mingw-w64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst'
+                'mingw-w64-gtk4-debug-4.24.0-1.2-any.pkg.tar.zst'
             "GTK4_STAGING_RUNTIME_PACKAGE=$runtime_package" | Add-Content $Env:GITHUB_ENV
             "GTK4_STAGING_DEBUG_PACKAGE=$debug_package" | Add-Content $Env:GITHUB_ENV
             'GTK4_STAGING_ENABLED=1' | Add-Content $Env:GITHUB_ENV
