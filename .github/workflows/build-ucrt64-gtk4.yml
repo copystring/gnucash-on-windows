@@ -1,0 +1,232 @@
+name: Build temporary ucrt64 gtk4 staging package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/owner-inspection-diagnostics-20260909
+    paths:
+      - packages/gtk4/**
+      - .github/workflows/build-ucrt64-gtk4.yml
+
+env:
+  MINGW_ARCH: ucrt64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ucrt64-gtk4-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.repository == 'copystring/gnucash-on-windows' &&
+      github.ref == 'refs/heads/fix/owner-inspection-diagnostics-20260909'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize artifact diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path repo-out | Out-Null
+          @(
+            "repository=$env:GITHUB_REPOSITORY"
+            "sha=$env:GITHUB_SHA"
+            "ref=$env:GITHUB_REF"
+            "run_id=$env:GITHUB_RUN_ID"
+            "run_attempt=$env:GITHUB_RUN_ATTEMPT"
+          ) | Set-Content -LiteralPath repo-out/RUN-CONTEXT.txt -Encoding utf8NoBOM
+
+      # Package upgrades are performed in separate MSYS2 processes below so a
+      # runtime update is not followed by dependency installation in the same
+      # process. This also lets transient mirror failures retry on one runner.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+
+      - name: Configure bounded Pacman downloads
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/pacman-system-update.log) 2>&1
+          sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf
+
+          for attempt in 1 2 3; do
+            echo "Pacman system-update attempt ${attempt}/3"
+            if timeout --foreground 15m pacman -Syu --noconfirm; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep 15
+            fi
+          done
+          echo 'Pacman system update failed after three bounded attempts.' >&2
+          exit 1
+
+      - name: Install the official recipe dependencies with bounded retries
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/pacman-dependencies.log) 2>&1
+
+          pacman_retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              echo "Pacman dependency attempt ${attempt}/3"
+              if timeout --foreground 20m pacman "$@"; then
+                return 0
+              fi
+              if [[ "$attempt" -lt 3 ]]; then
+                sleep 15
+              fi
+            done
+            return 1
+          }
+
+          # Complete a possible two-stage MSYS2 runtime update in this fresh
+          # shell, then install exactly the official PKGBUILD dependency sets.
+          pacman_retry -Syu --noconfirm
+          cd packages/gtk4
+          source ./PKGBUILD
+          pacman_retry -S --needed --noconfirm \
+            base-devel git \
+            "${makedepends[@]}" "${depends[@]}"
+
+      - name: Verify pinned sources with bounded download retries
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/source-verification.log) 2>&1
+          cd packages/gtk4
+
+          test "$(sha256sum gtkcolumnview-focus-column-ref.patch | cut -d' ' -f1)" = \
+            '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
+          test "$(sha256sum 001-fix-font-rendering.patch | cut -d' ' -f1)" = \
+            'ebac78616a7668edbfdd77b9959ad63239aa59ed12b995a9663bf2df7158be26'
+
+          for attempt in 1 2 3; do
+            echo "GTK source-download attempt ${attempt}/3"
+            if timeout --foreground 15m makepkg-mingw --verifysource --noconfirm; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep 15
+            fi
+          done
+          echo 'GTK source verification failed after three bounded attempts.' >&2
+          exit 1
+
+      - name: Build GTK 4.24.0 with the ColumnView ownership patch
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/package-build.log) 2>&1
+          repo_out="$(pwd)/repo-out"
+          cd packages/gtk4
+          makepkg-mingw -CLf --noconfirm
+
+          grep -Fq 'g_clear_object (&item);' src/gtk-4.24.0/gtk/gtkcolumnview.c
+
+          main_packages=(mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-*.pkg.tar.zst)
+          debug_packages=(mingw-w64-ucrt-x86_64-gtk4-debug-4.24.0-1.1-*.pkg.tar.zst)
+          [[ -e "${main_packages[0]}" ]]
+          [[ -e "${debug_packages[0]}" ]]
+          cp "${main_packages[@]}" "${debug_packages[@]}" "$repo_out/"
+
+      - name: Record package provenance and hashes
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/package-provenance.log) 2>&1
+          {
+            echo "Staging recipe commit: $GITHUB_SHA"
+            echo "PKGBUILD SHA-256: $(sha256sum packages/gtk4/PKGBUILD | cut -d' ' -f1)"
+            echo 'MSYS2 MINGW-packages recipe commit: de381e6b410070c15e84a3fa40fa53962057d7c7'
+            echo 'GTK tag commit: 1f47f368b17701e693918fcd078436b39d4354d1'
+            echo 'Official reference recipe commit: 62ef6f178fb03342b647f8172efb324bfe48a520'
+            echo 'GTK source SHA-256: 28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044'
+            echo 'ColumnView patch SHA-256: 23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
+            echo
+            pacman --version
+            cc --version
+            echo
+            for package in repo-out/*.pkg.tar.zst; do
+              pacman -Qip "$package"
+            done
+          } > repo-out/BUILD-PROVENANCE.txt
+          (cd repo-out && sha256sum *.pkg.tar.zst > SHA256SUMS)
+
+      - name: Write machine-readable handoff manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactName = 'ucrt64-gtk4-4.24.0-1.1-column-focus'
+          $packages = @(Get-ChildItem -LiteralPath repo-out -Filter '*.pkg.tar.zst' -File |
+            Sort-Object Name |
+            ForEach-Object {
+              [ordered]@{
+                name = $_.Name
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                kind = if ($_.Name -match '-gtk4-debug-') { 'debug' } else { 'runtime' }
+              }
+            })
+          if (@($packages | Where-Object kind -eq 'runtime').Count -ne 1) {
+            throw 'Expected exactly one GTK runtime package.'
+          }
+          if (@($packages | Where-Object kind -eq 'debug').Count -ne 1) {
+            throw 'Expected exactly one GTK debug package.'
+          }
+          $manifest = [ordered]@{
+            schemaVersion = 1
+            artifactName = $artifactName
+            stagingRecipeCommit = $env:GITHUB_SHA
+            pkgbuildSha256 = (Get-FileHash -LiteralPath packages/gtk4/PKGBUILD -Algorithm SHA256).Hash.ToLowerInvariant()
+            packageVersion = '4.24.0-1.1'
+            architecture = 'ucrt64'
+            recipe = [ordered]@{
+              repository = 'https://github.com/msys2/MINGW-packages'
+              commit = 'de381e6b410070c15e84a3fa40fa53962057d7c7'
+              referenceCommit = '62ef6f178fb03342b647f8172efb324bfe48a520'
+            }
+            source = [ordered]@{
+              url = 'https://download.gnome.org/sources/gtk/4.24/gtk-4.24.0.tar.xz'
+              sha256 = '28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044'
+              tagCommit = '1f47f368b17701e693918fcd078436b39d4354d1'
+            }
+            patches = @(
+              [ordered]@{
+                name = '001-fix-font-rendering.patch'
+                sha256 = 'ebac78616a7668edbfdd77b9959ad63239aa59ed12b995a9663bf2df7158be26'
+                origin = 'msys2'
+              },
+              [ordered]@{
+                name = 'gtkcolumnview-focus-column-ref.patch'
+                sha256 = '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
+                origin = 'temporary-gnucash-staging'
+              }
+            )
+            packages = $packages
+          }
+          $manifest | ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath repo-out/manifest.json -Encoding utf8NoBOM
+
+      - name: Upload GTK packages or failure diagnostics without publishing a feed
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ucrt64-gtk4-4.24.0-1.1-column-focus
+          path: |
+            repo-out/*.pkg.tar.zst
+            repo-out/*.log
+            repo-out/RUN-CONTEXT.txt
+            repo-out/BUILD-PROVENANCE.txt
+            repo-out/SHA256SUMS
+            repo-out/manifest.json
+            packages/gtk4/*.log
+            packages/gtk4/src/build-UCRT64/meson-logs/**
+          if-no-files-found: error
+          retention-days: 14

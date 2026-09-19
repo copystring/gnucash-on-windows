@@ -1,0 +1,11 @@
+--- gtk-4.24.0/gtk/gtksettings.c.orig	2026-09-11 22:52:46.070984100 +0200
++++ gtk-4.24.0/gtk/gtksettings.c	2026-09-11 22:53:19.779211400 +0200
+@@ -998,7 +998,7 @@
+    */
+   pspecs[PROP_FONT_RENDERING] = g_param_spec_enum ("gtk-font-rendering", NULL, NULL,
+                                                    GTK_TYPE_FONT_RENDERING,
+-                                                   GTK_FONT_RENDERING_AUTOMATIC,
++                                                   GTK_FONT_RENDERING_MANUAL,
+                                                    G_PARAM_READWRITE | G_PARAM_STATIC_NAME);
+ 
+   /**

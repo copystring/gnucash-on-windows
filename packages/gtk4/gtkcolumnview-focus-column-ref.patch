@@ -1,0 +1,9 @@
+diff --git a/gtk/gtkcolumnview.c b/gtk/gtkcolumnview.c
+--- a/gtk/gtkcolumnview.c
++++ b/gtk/gtkcolumnview.c
+@@ -1641,3 +1641,5 @@ gtk_column_view_remove_column (GtkColumnView       *self,
+       gtk_column_view_set_focus_column (self, item, TRUE);
++      /* focus_column is non-owning; g_list_model_get_item() returned a ref. */
++      g_clear_object (&item);
+     }
+ }
