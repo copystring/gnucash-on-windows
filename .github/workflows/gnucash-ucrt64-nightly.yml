@@ -22,6 +22,21 @@ on:
                 required: false
                 default: ''
                 type: string
+            buildsupport_ref:
+                description: Optional ref for inno_setup and extra_dist; empty preserves existing behavior
+                required: false
+                default: ''
+                type: string
+            gtk4_runtime_artifact_run_id:
+                description: Optional successful GTK4 staging workflow run ID; requires gtk4_expected_recipe_sha
+                required: false
+                default: ''
+                type: string
+            gtk4_expected_recipe_sha:
+                description: Expected gnucash-on-windows commit for the optional GTK4 staging artifact
+                required: false
+                default: ''
+                type: string
             dependency_overlay_name:
                 description: Optional Pacman repository name; requires dependency_overlay_url
                 required: false
@@ -54,6 +69,21 @@ on:
                 required: false
                 default: ''
                 type: string
+            buildsupport_ref:
+                description: Optional ref for inno_setup and extra_dist; empty preserves existing behavior
+                required: false
+                default: ''
+                type: string
+            gtk4_runtime_artifact_run_id:
+                description: Optional successful GTK4 staging workflow run ID; requires gtk4_expected_recipe_sha
+                required: false
+                default: ''
+                type: string
+            gtk4_expected_recipe_sha:
+                description: Expected gnucash-on-windows commit for the optional GTK4 staging artifact
+                required: false
+                default: ''
+                type: string
             dependency_overlay_name:
                 description: Optional Pacman repository name; requires dependency_overlay_url
                 required: false
@@ -71,7 +101,9 @@ on:
     schedule:
         - cron: '0 3 * * *'
 
-permissions: {}
+permissions:
+    actions: read
+    contents: read
 jobs:
     gnucash_future_ucrt64_bundle:
         runs-on: windows-latest
@@ -91,6 +123,64 @@ jobs:
             update: true
             install: git
             pacboy: toolchain:p cmake:p ninja:p
+
+        - name: Checkout our inno_setup and extra_dist directories
+          uses: actions/checkout@v7
+          with:
+            ref: ${{ inputs.buildsupport_ref || (github.event_name == 'workflow_dispatch' && github.sha || 'future') }}
+            sparse-checkout: |
+                extra_dist
+                inno_setup
+
+        - name: Verify and download optional GTK4 staging artifact
+          if: ${{ inputs.gtk4_runtime_artifact_run_id != '' || inputs.gtk4_expected_recipe_sha != '' }}
+          shell: pwsh
+          env:
+            GH_TOKEN: ${{ github.token }}
+            GTK4_RUN_ID: ${{ inputs.gtk4_runtime_artifact_run_id }}
+            GTK4_EXPECTED_RECIPE_SHA: ${{ inputs.gtk4_expected_recipe_sha }}
+          run: |
+            $ErrorActionPreference = 'Stop'
+            $repository = 'copystring/gnucash-on-windows'
+            $artifact_name = 'ucrt64-gtk4-4.24.0-1.1-column-focus'
+            if ($Env:GTK4_RUN_ID -notmatch '^[1-9][0-9]*$') {
+              throw 'gtk4_runtime_artifact_run_id must be a positive numeric Actions run ID.'
+            }
+            if ($Env:GTK4_EXPECTED_RECIPE_SHA -notmatch '^[0-9a-fA-F]{40}$') {
+              throw 'gtk4_expected_recipe_sha must be a full 40-character commit SHA.'
+            }
+            $expected_sha = $Env:GTK4_EXPECTED_RECIPE_SHA.ToLowerInvariant()
+            $run = gh api "repos/$repository/actions/runs/$Env:GTK4_RUN_ID" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read the requested GTK4 staging workflow run.' }
+            if ([string]$run.id -cne $Env:GTK4_RUN_ID -or
+                $run.repository.full_name -cne $repository -or
+                $run.head_repository.full_name -cne $repository -or
+                $run.head_sha -cne $expected_sha -or
+                $run.head_branch -cne 'fix/owner-inspection-diagnostics-20260909' -or
+                $run.path -cne '.github/workflows/build-ucrt64-gtk4.yml' -or
+                $run.status -cne 'completed' -or
+                $run.conclusion -cne 'success') {
+              throw 'The requested GTK4 staging run does not match the reviewed repository, workflow, branch, commit, and successful conclusion.'
+            }
+            $artifacts = gh api "repos/$repository/actions/runs/$Env:GTK4_RUN_ID/artifacts?per_page=100" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate the requested GTK4 staging artifacts.' }
+            $matching_artifacts = @($artifacts.artifacts | Where-Object {
+                $_.name -ceq $artifact_name -and !$_.expired
+            })
+            if ($matching_artifacts.Count -ne 1) {
+              throw "Expected exactly one non-expired '$artifact_name' artifact in the requested run."
+            }
+            $artifact_directory = Join-Path $Env:RUNNER_TEMP 'gtk4-staging-artifact'
+            gh run download $Env:GTK4_RUN_ID --repo $repository --name $artifact_name --dir $artifact_directory
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to download the requested GTK4 staging artifact.' }
+            $runtime_package = & .\inno_setup\validate-gtk4-staging-artifact.ps1 `
+                -ArtifactDirectory $artifact_directory -ExpectedRecipeCommit $expected_sha
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $debug_package = Join-Path $artifact_directory `
+                'mingw-w64-ucrt-x86_64-gtk4-debug-4.24.0-1.1-any.pkg.tar.zst'
+            "GTK4_STAGING_RUNTIME_PACKAGE=$runtime_package" | Add-Content $Env:GITHUB_ENV
+            "GTK4_STAGING_DEBUG_PACKAGE=$debug_package" | Add-Content $Env:GITHUB_ENV
+            'GTK4_STAGING_ENABLED=1' | Add-Content $Env:GITHUB_ENV
 
         - name: Add our repo
           shell: msys2 {0}
@@ -119,15 +209,20 @@ jobs:
             sed -i "s/^# ParallelDownloads/ParallelDownloads/" /etc/pacman.conf
 
             pacman -Syv
-            pacboy --noconfirm -S swig:p appstream-glib:p aqbanking:p boost:p gtk4:p gsettings-desktop-schemas:p docbook-xsl:p gettext-tools:p gtest:p guile3:p harfbuzz-icu:p icu:p iso-codes:p pdcurses:p libdbi-drivers:p libofx:p libsecret:p webview2-loader:p zlib:p
+            packages=(swig:p appstream-glib:p aqbanking:p boost:p gtk4:p gsettings-desktop-schemas:p docbook-xsl:p gettext-tools:p gtest:p guile3:p harfbuzz-icu:p icu:p iso-codes:p pdcurses:p libdbi-drivers:p libofx:p libsecret:p webview2-loader:p zlib:p)
+            if [[ "${GTK4_STAGING_ENABLED:-}" == 1 ]]; then
+              packages+=(gdb:p)
+            fi
+            pacboy --noconfirm -S "${packages[@]}"
 
-        - name: Checkout our inno_setup and extra_dist directories
-          uses: actions/checkout@v7
-          with:
-            ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || 'future' }}
-            sparse-checkout: |
-                extra_dist
-                inno_setup
+        - name: Install verified GTK4 staging runtime and debug symbols
+          if: ${{ inputs.gtk4_runtime_artifact_run_id != '' }}
+          shell: msys2 {0}
+          run: |
+            set -euo pipefail
+            runtime_package=$(cygpath -u "$GTK4_STAGING_RUNTIME_PACKAGE")
+            debug_package=$(cygpath -u "$GTK4_STAGING_DEBUG_PACKAGE")
+            pacman --noconfirm -U "$runtime_package" "$debug_package"
 
         - name: Checkout GnuCash
           uses: actions/checkout@v7
@@ -146,6 +241,10 @@ jobs:
             & .\inno_setup\tests\InstallerArchitecture.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & .\inno_setup\tests\InstallerDiagnostics.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\inno_setup\tests\HtmlHelpWorkshop.Tests.ps1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\inno_setup\tests\Gtk4StagingArtifact.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & .\inno_setup\tests\GApplicationIpc.Tests.ps1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -166,6 +265,14 @@ jobs:
             ref: ${{ inputs.docs_ref || '' }}
             path: gnucash-docs-git
 
+        - name: Prepare HTML Help Workshop
+          shell: pwsh
+          run: |
+            $ErrorActionPreference = 'Stop'
+            & .\inno_setup\prepare-html-help-workshop.ps1 `
+                -OutputDirectory "$Env:RUNNER_TEMP\html-help-workshop"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
         - name: Configure GnuCash
           shell: msys2 {0}
           env:
@@ -182,21 +289,68 @@ jobs:
             GUILE_LOAD_COMPILED_PATH: "${{ env.MSYSTEM_PREFIX }}/lib/guile/3.0/ccache"
             GNC_DBD_DIR: "${{ env.MSYSTEM_PREFIX }}/lib/dbd"
           run: |
+            set -euo pipefail
             cd $RUNNER_TEMP/gnucash-build
-            ninja
-            ninja install
+            ninja_args=()
+            if [[ "${GTK4_STAGING_ENABLED:-}" == 1 ]]; then
+              ninja_args=(-j 3)
+            fi
+            ninja "${ninja_args[@]}"
+            ninja "${ninja_args[@]}" install
+
+        - name: Run full Core check with verified GTK4 staging package
+          id: gtk4_staging_core_check
+          if: ${{ inputs.gtk4_runtime_artifact_run_id != '' }}
+          timeout-minutes: 45
+          env:
+            GUILE_LOAD_PATH: "${{ env.MSYSTEM_PREFIX }}/share/guile/3.0/"
+            GUILE_LOAD_COMPILED_PATH: "${{ env.MSYSTEM_PREFIX }}/lib/guile/3.0/ccache"
+            GNC_DBD_DIR: "${{ env.MSYSTEM_PREFIX }}/lib/dbd"
+            CTEST_OUTPUT_ON_FAILURE: '1'
+          run: |
+            set -euo pipefail
+            cd $RUNNER_TEMP/gnucash-build
+            ninja -j 3 check
+
+        - name: Capture native matcher IME backtrace after a Core test failure
+          if: ${{ failure() && steps.gtk4_staging_core_check.outcome == 'failure' }}
+          timeout-minutes: 4
+          env:
+            GUILE_LOAD_PATH: "${{ env.MSYSTEM_PREFIX }}/share/guile/3.0/"
+            GUILE_LOAD_COMPILED_PATH: "${{ env.MSYSTEM_PREFIX }}/lib/guile/3.0/ccache"
+            GNC_DBD_DIR: "${{ env.MSYSTEM_PREFIX }}/lib/dbd"
+          run: |
+            bash "$GITHUB_WORKSPACE/gnucash-git/util/ci/windows-matcher-ime-backtrace.sh" \
+              "$RUNNER_TEMP/gnucash-build"
+
+        - name: Upload GTK4 staging Core diagnostics
+          if: ${{ always() && inputs.gtk4_runtime_artifact_run_id != '' }}
+          uses: actions/upload-artifact@v7
+          with:
+            name: gtk4-staging-core-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+            path: |
+              ${{ runner.temp }}/gnucash-build/Testing/Temporary/LastTest.log
+              ${{ runner.temp }}/gnucash-build/matcher-ime-backtrace.log
+              ${{ runner.temp }}/gtk4-staging-artifact/manifest.json
+              ${{ runner.temp }}/gtk4-staging-artifact/SHA256SUMS
+            if-no-files-found: ignore
 
         - name: Configure GnuCash Docs
           shell: msys2 {0}
           run: |
             mkdir $RUNNER_TEMP/gnucash-docs-build && cd $RUNNER_TEMP/gnucash-docs-build
-            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" $GITHUB_WORKSPACE/gnucash-docs-git
+            cmake -G Ninja -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/inst" -DHHC="$RUNNER_TEMP/html-help-workshop/hhc.exe" $GITHUB_WORKSPACE/gnucash-docs-git
 
         - name: Build GnuCash Docs
           run: |
+            set -euo pipefail
             cd $RUNNER_TEMP/gnucash-docs-build
-            ninja
-            ninja install
+            ninja_args=()
+            if [[ "${GTK4_STAGING_ENABLED:-}" == 1 ]]; then
+              ninja_args=(-j 3)
+            fi
+            ninja "${ninja_args[@]}"
+            ninja "${ninja_args[@]}" install
 
         - name: Copy message catalogs
           shell: msys2 {0}
