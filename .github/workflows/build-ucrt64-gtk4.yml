@@ -108,7 +108,50 @@ jobs:
           echo 'GTK source verification failed after three bounded attempts.' >&2
           exit 1
 
-      - name: Build GTK 4.24.0 with the ColumnView ownership patch
+      - name: Run IME lifetime fixture against the official GTK baseline
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/ime-baseline.log) 2>&1
+          repo_out="$(pwd)/repo-out"
+          cd packages/gtk4
+
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gtk4
+          baseline_version="$(pacman -Q mingw-w64-ucrt-x86_64-gtk4 | awk '{print $2}')"
+          test "${baseline_version}" = '4.24.0-1'
+          echo "official_runtime_package=${baseline_version}"
+
+          cc -std=c11 -Wall -Wextra -Werror \
+            test-ime-filter-lifetime.c \
+            -o "${repo_out}/test-ime-filter-lifetime-baseline.exe" \
+            $(pkg-config --cflags --libs gtk4) -limm32
+
+          run_case() {
+            local path="$1"
+            local expected="$2"
+            local log="${repo_out}/ime-baseline-${path##*/}.log"
+            local status=0
+            timeout --foreground 30s \
+              "${repo_out}/test-ime-filter-lifetime-baseline.exe" -p "${path}" \
+              >"${log}" 2>&1 || status=$?
+            echo "${path}: exit=${status} expected=${expected}"
+            loaded_dll="$(tr -d '\r' < "${log}" | sed -n 's/^# loaded_gtk_dll=//p' | tail -n 1)"
+            expected_dll="$(cygpath -w /ucrt64/bin/libgtk-4-1.dll)"
+            test "${loaded_dll,,}" = "${expected_dll,,}"
+            if [[ "${expected}" == pass ]]; then
+              test "${status}" -eq 0
+            else
+              test "${status}" -ne 0
+              grep -Eq 'GTK_IS_IM_CONTEXT_IME' "${log}"
+            fi
+          }
+
+          run_case /ime/filter/normal pass
+          run_case /ime/filter/repeated-focus pass
+          run_case /ime/filter/reentrant-focus pass
+          run_case /ime/filter/detached-client fail
+          run_case /ime/filter/dispose-focused fail
+
+      - name: Build GTK 4.24.0 with ColumnView and IME ownership patches
         run: |
           set -euo pipefail
           exec > >(tee -a repo-out/package-build.log) 2>&1
@@ -119,21 +162,21 @@ jobs:
           grep -Fq 'g_clear_object (&item);' src/gtk-4.24.0/gtk/gtkcolumnview.c
 
           shopt -s nullglob
-          main_packages=(mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.1-*.pkg.tar.zst)
-          debug_packages=(mingw-w64-gtk4-debug-4.24.0-1.1-*.pkg.tar.zst)
+          main_packages=(mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.2-*.pkg.tar.zst)
+          debug_packages=(mingw-w64-gtk4-debug-4.24.0-1.2-*.pkg.tar.zst)
           (( ${#main_packages[@]} == 1 ))
           (( ${#debug_packages[@]} == 1 ))
 
           runtime_metadata=$(bsdtar -xOf "${main_packages[0]}" .PKGINFO)
           grep -Fxq 'pkgname = mingw-w64-ucrt-x86_64-gtk4' <<< "$runtime_metadata"
           grep -Fxq 'pkgbase = mingw-w64-gtk4' <<< "$runtime_metadata"
-          grep -Fxq 'pkgver = 4.24.0-1.1' <<< "$runtime_metadata"
+          grep -Fxq 'pkgver = 4.24.0-1.2' <<< "$runtime_metadata"
           grep -Fxq 'arch = any' <<< "$runtime_metadata"
 
           debug_metadata=$(bsdtar -xOf "${debug_packages[0]}" .PKGINFO)
           grep -Fxq 'pkgname = mingw-w64-gtk4-debug' <<< "$debug_metadata"
           grep -Fxq 'pkgbase = mingw-w64-gtk4' <<< "$debug_metadata"
-          grep -Fxq 'pkgver = 4.24.0-1.1' <<< "$debug_metadata"
+          grep -Fxq 'pkgver = 4.24.0-1.2' <<< "$debug_metadata"
           grep -Fxq 'arch = any' <<< "$debug_metadata"
           debug_contents=$(bsdtar -tf "${debug_packages[0]}")
           grep -Fxq 'ucrt64/bin/libgtk-4-1.dll.debug' <<< "$debug_contents"
@@ -142,6 +185,44 @@ jobs:
             exit 1
           fi
           cp "${main_packages[@]}" "${debug_packages[@]}" "$repo_out/"
+
+      - name: Install and run the patched IME lifetime fixture
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/ime-patched.log) 2>&1
+          repo_out="$(pwd)/repo-out"
+          cd packages/gtk4
+          shopt -s nullglob
+          main_packages=(mingw-w64-ucrt-x86_64-gtk4-4.24.0-1.2-*.pkg.tar.zst)
+          debug_packages=(mingw-w64-gtk4-debug-4.24.0-1.2-*.pkg.tar.zst)
+          (( ${#main_packages[@]} == 1 ))
+          (( ${#debug_packages[@]} == 1 ))
+
+          pacman -U --noconfirm "${main_packages[0]}" "${debug_packages[0]}"
+          patched_version="$(pacman -Q mingw-w64-ucrt-x86_64-gtk4 | awk '{print $2}')"
+          debug_version="$(pacman -Q mingw-w64-gtk4-debug | awk '{print $2}')"
+          test "${patched_version}" = '4.24.0-1.2'
+          test "${debug_version}" = '4.24.0-1.2'
+          echo "patched_runtime_package=${patched_version}"
+          echo "patched_debug_package=${debug_version}"
+          pacman -Qo /ucrt64/bin/libgtk-4-1.dll
+          pacman -Ql mingw-w64-ucrt-x86_64-gtk4 | grep -F ' /ucrt64/bin/libgtk-4-1.dll'
+
+          cc -std=c11 -Wall -Wextra -Werror \
+            test-ime-filter-lifetime.c \
+            -o "${repo_out}/test-ime-filter-lifetime-patched.exe" \
+            $(pkg-config --cflags --libs gtk4) -limm32
+          timeout --foreground 30s \
+            "${repo_out}/test-ime-filter-lifetime-patched.exe" -p /ime/filter \
+            >"${repo_out}/ime-patched-all-tests.log" 2>&1
+          grep -Fq '1..5' "${repo_out}/ime-patched-all-tests.log"
+          test "$(grep -Ec '^ok [0-9]+ /ime/filter/' "${repo_out}/ime-patched-all-tests.log")" -eq 5
+          loaded_dll="$(tr -d '\r' < "${repo_out}/ime-patched-all-tests.log" | sed -n 's/^# loaded_gtk_dll=//p' | tail -n 1)"
+          expected_dll="$(cygpath -w /ucrt64/bin/libgtk-4-1.dll)"
+          test -n "${loaded_dll}"
+          test "$(printf '%s' "${loaded_dll}" | tr '[:upper:]' '[:lower:]')" = \
+            "$(printf '%s' "${expected_dll}" | tr '[:upper:]' '[:lower:]')"
+          echo "loaded_gtk_dll_sha256=$(sha256sum /ucrt64/bin/libgtk-4-1.dll | cut -d' ' -f1)"
 
       - name: Record package provenance and hashes
         run: |
@@ -155,6 +236,8 @@ jobs:
             echo 'Official reference recipe commit: 62ef6f178fb03342b647f8172efb324bfe48a520'
             echo 'GTK source SHA-256: 28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044'
             echo 'ColumnView patch SHA-256: 23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
+            echo 'IME lifetime patch SHA-256: 402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+            echo "IME lifetime fixture SHA-256: $(sha256sum packages/gtk4/test-ime-filter-lifetime.c | cut -d' ' -f1)"
             echo
             pacman --version
             cc --version
@@ -169,7 +252,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $artifactName = 'ucrt64-gtk4-4.24.0-1.1-column-focus'
+          $artifactName = 'ucrt64-gtk4-4.24.0-1.2-column-focus-ime'
           $packages = @(Get-ChildItem -LiteralPath repo-out -Filter '*.pkg.tar.zst' -File |
             Sort-Object Name |
             ForEach-Object {
@@ -190,7 +273,7 @@ jobs:
             artifactName = $artifactName
             stagingRecipeCommit = $env:GITHUB_SHA
             pkgbuildSha256 = (Get-FileHash -LiteralPath packages/gtk4/PKGBUILD -Algorithm SHA256).Hash.ToLowerInvariant()
-            packageVersion = '4.24.0-1.1'
+            packageVersion = '4.24.0-1.2'
             architecture = 'ucrt64'
             recipe = [ordered]@{
               repository = 'https://github.com/msys2/MINGW-packages'
@@ -212,8 +295,17 @@ jobs:
                 name = 'gtkcolumnview-focus-column-ref.patch'
                 sha256 = '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
                 origin = 'temporary-gnucash-staging'
+              },
+              [ordered]@{
+                name = 'gtkimcontextime-filter-lifetime.patch'
+                sha256 = '402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+                origin = 'temporary-gnucash-staging'
               }
             )
+            regressionFixture = [ordered]@{
+              name = 'test-ime-filter-lifetime.c'
+              sha256 = (Get-FileHash -LiteralPath packages/gtk4/test-ime-filter-lifetime.c -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
             packages = $packages
           }
           $manifest | ConvertTo-Json -Depth 8 |
@@ -223,7 +315,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ucrt64-gtk4-4.24.0-1.1-column-focus
+          name: ucrt64-gtk4-4.24.0-1.2-column-focus-ime
           path: |
             repo-out/*.pkg.tar.zst
             repo-out/*.log
@@ -231,6 +323,8 @@ jobs:
             repo-out/BUILD-PROVENANCE.txt
             repo-out/SHA256SUMS
             repo-out/manifest.json
+            repo-out/ime-*.log
+            repo-out/test-ime-filter-lifetime-*.exe
             packages/gtk4/*.log
             packages/gtk4/src/build-UCRT64/meson-logs/**
           if-no-files-found: error

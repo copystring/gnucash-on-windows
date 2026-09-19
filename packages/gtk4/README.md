@@ -15,7 +15,7 @@ files are unchanged from the previously recorded recipe commit
 
 The local delta is deliberately limited to:
 
-1. `pkgrel=1.1`, so an explicitly installed staging artifact is distinct from
+1. `pkgrel=1.2`, so an explicitly installed staging artifact is distinct from
    the official `4.24.0-1` package.
 2. The repository-standard `debug`, `strip`, and `buildflags` package options.
    Meson uses `buildtype=release` and `debug=true`, retaining release
@@ -31,11 +31,19 @@ The local delta is deliberately limited to:
    `23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9`.
    It releases the owned reference returned by `g_list_model_get_item()` after
    assigning the non-owning `focus_column` pointer.
-4. Compilation is bounded to three jobs. The official recipe does not build
+4. `gtkimcontextime-filter-lifetime.patch`, SHA-256
+   `402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a`.
+   It keeps the Win32 IME display filter owned by its context through detached
+   client and focused-disposal paths. The native regression fixture is
+   `test-ime-filter-lifetime.c` and is executed only on the GitHub Windows
+   runner against the official package and the patched runtime. The fixture
+   covers normal, repeated-focus, reentrant-focus, detached-client, and
+   dispose-focused scenarios.
+5. Compilation is bounded to three jobs. The official recipe does not build
    GTK's test suite; packaging success is not a runtime-test result. The
    GnuCash regression suite must pass against the resulting package separately.
 
-The patch was A/B tested independently by
+The ColumnView patch was A/B tested independently by
 `.worktrees/gtk4-ime-repro/tests/gtk4-column-focus-ownership-probe` against GTK
 4.22.4: the baseline retained the successor column and the patched build
 finalized it. On 2026-09-19 the unchanged patch also passed `git apply
@@ -46,7 +54,8 @@ No deferred-focus patch belongs here. GTK 4.24.0 already uses
 `g_set_object (&priv->move_focus_widget, widget)` in `gtk/gtkwindow.c`, so the
 separate GTK 4.22 ownership correction is already present.
 
-The accompanying workflow publishes only a GitHub Actions artifact. It does
+The accompanying workflow publishes only a GitHub Actions artifact named
+`ucrt64-gtk4-4.24.0-1.2-column-focus-ime`. It does
 not update the rolling dependency repository or any package feed. Alongside
 the packages it writes `manifest.json` with the artifact name, exact source
 and recipe commits, patch hashes, package names, package SHA-256 values, and
@@ -54,6 +63,7 @@ the required debug-package identity. The normal GnuCash Windows path continues
 to consume official MSYS2 GTK unless a caller explicitly installs this
 artifact.
 
-Remove this directory and its workflow once an official GTK release or MSYS2
-package contains the ColumnView ownership fix and the GnuCash budget-column
-regression passes with that official package.
+Remove the individual patches once official GTK/MSYS2 packages contain their
+fixes and the corresponding native and GnuCash regressions pass. Remove this
+directory and its workflow once both the ColumnView and IME corrections are
+available through the normal package route.

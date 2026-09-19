@@ -4,7 +4,7 @@ _realname=gtk4
 pkgbase=mingw-w64-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
 pkgver=4.24.0
-pkgrel=1.1
+pkgrel=1.2
 pkgdesc="GObject-based multi-platform GUI toolkit (v4) (mingw-w64)"
 arch=('any')
 mingw_arch=('mingw64' 'ucrt64' 'clang64' 'clangarm64')
@@ -48,10 +48,12 @@ optdepends=(
 )
 source=("https://download.gnome.org/sources/gtk/${pkgver:0:4}/gtk-${pkgver}.tar.xz"
         "001-fix-font-rendering.patch"
-        "gtkcolumnview-focus-column-ref.patch")
+        "gtkcolumnview-focus-column-ref.patch"
+        "gtkimcontextime-filter-lifetime.patch")
 sha256sums=('28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044'
             'ebac78616a7668edbfdd77b9959ad63239aa59ed12b995a9663bf2df7158be26'
-            '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9')
+            '23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
+            '402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a')
 
 prepare() {
   cd gtk-${pkgver}
@@ -62,6 +64,10 @@ prepare() {
   # Temporary backport: release the owned get_item() reference after the
   # non-owning focus-column assignment. Remove after the fix reaches MSYS2 GTK.
   patch -Np1 -i ../gtkcolumnview-focus-column-ref.patch
+
+  # Keep the Win32 IME display filter owned by its context for detached and
+  # focused disposal paths.
+  patch -Np1 -i ../gtkimcontextime-filter-lifetime.patch
 }
 
 build() {
