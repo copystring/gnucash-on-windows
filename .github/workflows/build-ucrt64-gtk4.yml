@@ -143,8 +143,13 @@ jobs:
               tr -d '\r' < "${log}" | grep -Fxq "ok 1 ${path}"
             else
               test "${status}" -ne 0
-              grep -Fq "not ok ${path} - " "${log}"
-              grep -Eq 'GTK_IS_IM_CONTEXT_IME' "${log}"
+              test "${status}" -ne 124
+              if [[ "${path}" == /ime/filter/release-during-filter ]]; then
+                grep -Fq 'release_context_on_preedit_start' "${log}"
+              else
+                grep -Fq "not ok ${path} - " "${log}"
+                grep -Eq 'GTK_IS_IM_CONTEXT_IME' "${log}"
+              fi
             fi
           }
 
@@ -153,6 +158,7 @@ jobs:
           run_case /ime/filter/reentrant-focus pass
           run_case /ime/filter/detached-client fail
           run_case /ime/filter/dispose-focused fail
+          run_case /ime/filter/release-during-filter fail
 
       - name: Build GTK 4.24.0 with ColumnView and IME ownership patches
         run: |
@@ -218,8 +224,8 @@ jobs:
           timeout --foreground 30s \
             "${repo_out}/test-ime-filter-lifetime-patched.exe" \
             >"${repo_out}/ime-patched-all-tests.log" 2>&1
-          grep -Fq '1..5' "${repo_out}/ime-patched-all-tests.log"
-          test "$(grep -Ec '^ok [0-9]+ /ime/filter/' "${repo_out}/ime-patched-all-tests.log")" -eq 5
+          grep -Fq '1..6' "${repo_out}/ime-patched-all-tests.log"
+          test "$(grep -Ec '^ok [0-9]+ /ime/filter/' "${repo_out}/ime-patched-all-tests.log")" -eq 6
           loaded_dll="$(tr -d '\r' < "${repo_out}/ime-patched-all-tests.log" | sed -n 's/^# loaded_gtk_dll=//p' | tail -n 1)"
           expected_dll="$(cygpath -w /ucrt64/bin/libgtk-4-1.dll)"
           test -n "${loaded_dll}"
@@ -239,7 +245,7 @@ jobs:
             echo 'Official reference recipe commit: 62ef6f178fb03342b647f8172efb324bfe48a520'
             echo 'GTK source SHA-256: 28ba4ac1c04f86eac09b79a163cb163a4c2b54442d9f7eccc04679062a581044'
             echo 'ColumnView patch SHA-256: 23046af144974f7a91d6a2cdad14f9de6764a667077bbb9dc6fd1a0611b3d5f9'
-            echo 'IME lifetime patch SHA-256: 402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+            echo 'IME lifetime patch SHA-256: 19fb2395b11a178e6057de2e961970e405bce8539665fa79fb99b0b4feb38693'
             echo "IME lifetime fixture SHA-256: $(sha256sum packages/gtk4/test-ime-filter-lifetime.c | cut -d' ' -f1)"
             echo
             pacman --version
@@ -301,7 +307,7 @@ jobs:
               },
               [ordered]@{
                 name = 'gtkimcontextime-filter-lifetime.patch'
-                sha256 = '402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a'
+                sha256 = '19fb2395b11a178e6057de2e961970e405bce8539665fa79fb99b0b4feb38693'
                 origin = 'temporary-gnucash-staging'
               }
             )

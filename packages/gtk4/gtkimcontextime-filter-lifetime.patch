@@ -104,3 +104,22 @@ index ac019f7..08044c0 100644
  
    if (was_preediting)
      {
+@@ -930,6 +953,6 @@ gtk_im_context_ime_message_filter (GdkWin32Display *display,
+                                    gpointer         data)
+ {
+-  GtkIMContext *context;
++  g_autoptr (GtkIMContext) context = NULL;
+   GtkIMContextIME *context_ime;
+   HWND hwnd;
+   HIMC himc;
+@@ -940,7 +963,9 @@ gtk_im_context_ime_message_filter (GdkWin32Display *display,
+ 
+   g_return_val_if_fail (GTK_IS_IM_CONTEXT_IME (data), retval);
+ 
+-  context = GTK_IM_CONTEXT (data);
++  /* Signal handlers may release the last external owner synchronously. */
++  context = g_object_ref (data);
++
+   context_ime = GTK_IM_CONTEXT_IME (data);
+   if (!context_ime->focus)
+     return retval;

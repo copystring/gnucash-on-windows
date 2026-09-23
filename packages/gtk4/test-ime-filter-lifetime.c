@@ -15,7 +15,8 @@ typedef enum
   REPEATED_FOCUS,
   DETACHED_CLIENT,
   DISPOSE_FOCUSED,
-  REENTRANT_FOCUS
+  REENTRANT_FOCUS,
+  RELEASE_DURING_FILTER
 } Scenario;
 
 typedef struct
@@ -52,6 +53,15 @@ context_finalized (gpointer data, GObject *object)
 }
 
 static void
+release_context_on_preedit_start (GtkIMContext *context, GtkIMContext **owner)
+{
+  g_assert_true (*owner == context);
+  g_test_message ("release_context_on_preedit_start");
+  *owner = NULL;
+  g_object_unref (context);
+}
+
+static void
 run_scenario (Scenario scenario)
 {
   GtkWidget *window = gtk_window_new ();
@@ -80,30 +90,43 @@ run_scenario (Scenario scenario)
   g_object_weak_ref (G_OBJECT (context), context_finalized, &finalized);
   gtk_im_context_set_client_widget (context, client);
   gtk_im_context_focus_in (context);
-  if (scenario == REENTRANT_FOCUS)
+  if (scenario == RELEASE_DURING_FILTER)
     {
-      guint previous;
-
-      g_signal_connect (context, "preedit-start", G_CALLBACK (preedit_started), &state);
-      g_signal_connect (context, "preedit-end", G_CALLBACK (preedit_ended), &state);
+      /* The filter must keep its callback data alive until it returns, even
+       * when a signal handler drops the last owner synchronously. */
+      g_signal_connect (context, "preedit-start",
+                        G_CALLBACK (release_context_on_preedit_start), &context);
       SendMessageW (hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
-      g_assert_true (state.refocused);
-      previous = state.ends;
-      SendMessageW (hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
-      g_assert_cmpuint (state.ends, ==, previous + 1);
-      previous = state.starts;
-      SendMessageW (hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
-      g_assert_cmpuint (state.starts, ==, previous + 1);
-      SendMessageW (hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+      g_assert_null (context);
+      g_assert_true (finalized);
     }
-  if (scenario == REPEATED_FOCUS)
-    gtk_im_context_focus_in (context);
-  if (scenario == DETACHED_CLIENT)
-    gtk_im_context_set_client_widget (context, NULL);
-  if (scenario != DISPOSE_FOCUSED)
-    gtk_im_context_focus_out (context);
-  g_object_unref (context);
-  g_assert_true (finalized);
+  else
+    {
+      if (scenario == REENTRANT_FOCUS)
+        {
+          guint previous;
+
+          g_signal_connect (context, "preedit-start", G_CALLBACK (preedit_started), &state);
+          g_signal_connect (context, "preedit-end", G_CALLBACK (preedit_ended), &state);
+          SendMessageW (hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
+          g_assert_true (state.refocused);
+          previous = state.ends;
+          SendMessageW (hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+          g_assert_cmpuint (state.ends, ==, previous + 1);
+          previous = state.starts;
+          SendMessageW (hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
+          g_assert_cmpuint (state.starts, ==, previous + 1);
+          SendMessageW (hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+        }
+      if (scenario == REPEATED_FOCUS)
+        gtk_im_context_focus_in (context);
+      if (scenario == DETACHED_CLIENT)
+        gtk_im_context_set_client_widget (context, NULL);
+      if (scenario != DISPOSE_FOCUSED)
+        gtk_im_context_focus_out (context);
+      g_object_unref (context);
+      g_assert_true (finalized);
+    }
 
   /* Dispatch a harmless native message even if presentation is deferred.
    * GDK applies the display filters before translating the message type. */
@@ -149,5 +172,6 @@ main (int argc, char **argv)
   g_test_add_data_func ("/ime/filter/detached-client", GINT_TO_POINTER (DETACHED_CLIENT), test_scenario);
   g_test_add_data_func ("/ime/filter/dispose-focused", GINT_TO_POINTER (DISPOSE_FOCUSED), test_scenario);
   g_test_add_data_func ("/ime/filter/reentrant-focus", GINT_TO_POINTER (REENTRANT_FOCUS), test_scenario);
+  g_test_add_data_func ("/ime/filter/release-during-filter", GINT_TO_POINTER (RELEASE_DURING_FILTER), test_scenario);
   return g_test_run ();
 }

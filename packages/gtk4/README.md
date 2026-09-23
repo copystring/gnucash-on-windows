@@ -32,13 +32,13 @@ The local delta is deliberately limited to:
    It releases the owned reference returned by `g_list_model_get_item()` after
    assigning the non-owning `focus_column` pointer.
 4. `gtkimcontextime-filter-lifetime.patch`, SHA-256
-   `402e6b1e4fc23f4cdfaebb82e2429c20fa78bbb85ac70054cd83c31fd8db566a`.
+   `19fb2395b11a178e6057de2e961970e405bce8539665fa79fb99b0b4feb38693`.
    It keeps the Win32 IME display filter owned by its context through detached
    client and focused-disposal paths. The native regression fixture is
    `test-ime-filter-lifetime.c` and is executed only on the GitHub Windows
    runner against the official package and the patched runtime. The fixture
-   covers normal, repeated-focus, reentrant-focus, detached-client, and
-   dispose-focused scenarios.
+   covers normal, repeated-focus, reentrant-focus, detached-client,
+   dispose-focused, and last-owner-release-during-filter scenarios.
 5. Compilation is bounded to three jobs. The official recipe does not build
    GTK's test suite; packaging success is not a runtime-test result. The
    GnuCash regression suite must pass against the resulting package separately.
