@@ -323,6 +323,59 @@ jobs:
           $manifest | ConvertTo-Json -Depth 8 |
             Set-Content -LiteralPath repo-out/manifest.json -Encoding utf8NoBOM
 
+      - name: Check out pinned GnuCash GTK4 consumer
+        uses: actions/checkout@v7
+        with:
+          repository: copystring/gnucash
+          ref: 0d3d4f3d966cb48177bdd4c9806caa144ec57d13
+          path: core-consumer
+          persist-credentials: false
+
+      - name: Build and run GnuCash matcher against staged GTK
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          exec > >(tee -a repo-out/core-consumer.log) 2>&1
+
+          test "$(git -C core-consumer rev-parse HEAD)" = \
+            '0d3d4f3d966cb48177bdd4c9806caa144ec57d13'
+          test "$(pacman -Q mingw-w64-ucrt-x86_64-gtk4 | awk '{print $2}')" = \
+            '4.24.0-1.2'
+          gtk_dll_sha256="$(sha256sum /ucrt64/bin/libgtk-4-1.dll | cut -d' ' -f1)"
+          test "$(pacman -Qqo /ucrt64/bin/libgtk-4-1.dll)" = \
+            'mingw-w64-ucrt-x86_64-gtk4'
+
+          # Match the Core Windows dependency set. The generic matcher test
+          # builds with AqBanking disabled while gwengui-gtk4 is unavailable.
+          sed -i "/^# SigLevel = Never/a [gnc-ucrt64]\nSigLevel = Optional TrustAll\nServer = https://github.com/gnucash/gnucash-windows-deps-repo/releases/download/gnc-ucrt64-repo/" /etc/pacman.conf
+          pacman -Syv
+          pacman -S --needed --noconfirm pactoys
+          pacboy --noconfirm -S --needed \
+            swig:p appstream-glib:p boost:p gsettings-desktop-schemas:p \
+            docbook-xsl:p gettext-tools:p gtest:p guile3:p harfbuzz-icu:p \
+            icu:p iso-codes:p pdcurses:p libdbi-drivers:p libofx:p \
+            libsecret:p webview2-loader zlib:p cmake:p ninja:p
+
+          test "$(pacman -Q mingw-w64-ucrt-x86_64-gtk4 | awk '{print $2}')" = \
+            '4.24.0-1.2'
+          test "$(sha256sum /ucrt64/bin/libgtk-4-1.dll | cut -d' ' -f1)" = \
+            "$gtk_dll_sha256"
+          test "$(pacman -Qqo /ucrt64/bin/libgtk-4-1.dll)" = \
+            'mingw-w64-ucrt-x86_64-gtk4'
+          echo "core_consumer_sha=$(git -C core-consumer rev-parse HEAD)"
+          echo "gtk_package=$(pacman -Q mingw-w64-ucrt-x86_64-gtk4)"
+          echo "gtk_dll_sha256=$gtk_dll_sha256"
+
+          export GUILE_AUTO_COMPILE=0
+          export GUILE_LOAD_PATH="$MSYSTEM_PREFIX/share/guile/3.0/"
+          export GUILE_LOAD_COMPILED_PATH="$MSYSTEM_PREFIX/lib/guile/3.0/ccache"
+          cmake -S core-consumer -B core-consumer/build -G Ninja \
+            -DWITH_AQBANKING=OFF
+          ninja -C core-consumer/build -j 2 \
+            compiled-schemas test-import-account-matcher
+          ctest --test-dir core-consumer/build --output-on-failure \
+            -R '^test-import-account-matcher$'
+
       - name: Upload GTK packages or failure diagnostics without publishing a feed
         if: always()
         uses: actions/upload-artifact@v7
@@ -337,6 +390,7 @@ jobs:
             repo-out/manifest.json
             repo-out/ime-*.log
             repo-out/test-ime-filter-lifetime-*.exe
+            core-consumer/build/Testing/Temporary/LastTest.log
             packages/gtk4/*.log
             packages/gtk4/src/build-UCRT64/meson-logs/**
           if-no-files-found: error
