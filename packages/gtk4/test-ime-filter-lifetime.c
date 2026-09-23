@@ -56,7 +56,8 @@ static void
 release_context_on_preedit_start (GtkIMContext *context, GtkIMContext **owner)
 {
   g_assert_true (*owner == context);
-  g_test_message ("release_context_on_preedit_start");
+  /* The baseline may abort before GTest flushes its buffered messages. */
+  g_printerr ("release_context_on_preedit_start\n");
   *owner = NULL;
   g_object_unref (context);
 }

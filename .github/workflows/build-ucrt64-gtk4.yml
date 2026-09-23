@@ -145,7 +145,10 @@ jobs:
               test "${status}" -ne 0
               test "${status}" -ne 124
               if [[ "${path}" == /ime/filter/release-during-filter ]]; then
-                grep -Fq 'release_context_on_preedit_start' "${log}"
+                if ! grep -Fq 'release_context_on_preedit_start' "${log}"; then
+                  cat "${log}" >&2
+                  return 1
+                fi
               else
                 grep -Fq "not ok ${path} - " "${log}"
                 grep -Eq 'GTK_IS_IM_CONTEXT_IME' "${log}"
